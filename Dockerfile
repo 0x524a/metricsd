@@ -1,5 +1,5 @@
 # Use Debian-based builder for better CGO/library compatibility
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
