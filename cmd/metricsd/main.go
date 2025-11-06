@@ -12,11 +12,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/0x524a/metrics-collector/internal/collector"
-	"github.com/0x524a/metrics-collector/internal/config"
-	"github.com/0x524a/metrics-collector/internal/orchestrator"
-	"github.com/0x524a/metrics-collector/internal/server"
-	"github.com/0x524a/metrics-collector/internal/shipper"
+	"github.com/0x524A/metricsd/internal/collector"
+	"github.com/0x524A/metricsd/internal/config"
+	"github.com/0x524A/metricsd/internal/orchestrator"
+	"github.com/0x524A/metricsd/internal/server"
+	"github.com/0x524A/metricsd/internal/shipper"
 )
 
 const (

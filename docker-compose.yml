@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  metricsd:
+    build: .
+    image: metricsd:latest
+    container_name: metricsd
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.json:/etc/metricsd/config.json:ro
+      - ./certs:/etc/metricsd/certs:ro
+    environment:
+      - MC_LOG_LEVEL=info
+      - MC_SHIPPER_ENDPOINT=${MC_SHIPPER_ENDPOINT:-https://prometheus:9090/api/v1/write}
+      - MC_TLS_ENABLED=${MC_TLS_ENABLED:-false}
+      - MC_TLS_CERT_FILE=/etc/metricsd/certs/client.crt
+      - MC_TLS_KEY_FILE=/etc/metricsd/certs/client.key
+      - MC_TLS_CA_FILE=/etc/metricsd/certs/ca.crt
+    networks:
+      - metrics
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  metrics:
+    driver: bridge

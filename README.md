@@ -1,6 +1,6 @@
 # Metrics Collector Service (metricsd)
 
-[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 
@@ -152,7 +152,7 @@ metrics-collector/
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.24 or later
 - NVIDIA drivers and CUDA (optional, for GPU metrics)
 
 ### Build from Source
@@ -698,30 +698,46 @@ sudo journalctl -u metricsd -f
 
 ### Docker
 
-**Dockerfile:**
+#### Building the Container Image
+
+**Prerequisites:**
+- Docker installed (version 20.10+ recommended)
+- Docker Compose (optional, for easier deployment)
+- At least 500MB free disk space for the image
+
+**Step 1: Create the Dockerfile**
+
+Create a file named `Dockerfile` in the project root:
+
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-bookworm AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git make
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    make \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
-    -ldflags '-w -s' \
-    -o metricsd cmd/metricsd/main.go
+# Build with all features including GPU support (NVML)
+RUN go build -ldflags '-w -s' -o metricsd cmd/metricsd/main.go
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1000 metricsd && \
-    adduser -D -u 1000 -G metricsd metricsd
+RUN groupadd -g 1000 metricsd && \
+    useradd -r -u 1000 -g metricsd -s /bin/false metricsd
 
 # Create directories
 RUN mkdir -p /etc/metricsd/certs /var/lib/metricsd
@@ -746,7 +762,112 @@ ENTRYPOINT ["/usr/local/bin/metricsd"]
 CMD ["-config", "/etc/metricsd/config.json"]
 ```
 
-**docker-compose.yml:**
+**Step 2: Build the Image**
+
+```bash
+# Basic build
+docker build -t metricsd:latest .
+
+# Build with custom tag
+docker build -t metricsd:v1.0.0 .
+
+# Build with specific platform (for cross-platform)
+docker build --platform linux/amd64 -t metricsd:latest .
+
+# Build with build arguments (if needed)
+docker build --build-arg GO_VERSION=1.21 -t metricsd:latest .
+
+# Build with no cache (clean build)
+docker build --no-cache -t metricsd:latest .
+
+# Build and show build progress
+docker build --progress=plain -t metricsd:latest .
+```
+
+**Step 3: Verify the Build**
+
+```bash
+# List the image
+docker images | grep metricsd
+
+# Check image size (should be around 20-30MB)
+docker images metricsd:latest --format "{{.Size}}"
+
+# Inspect the image
+docker inspect metricsd:latest
+
+# Test run (quick check)
+docker run --rm metricsd:latest -help
+```
+
+**Step 4: Tag for Registry (Optional)**
+
+```bash
+# Tag for Docker Hub
+docker tag metricsd:latest yourusername/metricsd:latest
+docker tag metricsd:latest yourusername/metricsd:v1.0.0
+
+# Tag for private registry
+docker tag metricsd:latest registry.example.com/metricsd:latest
+
+# Push to registry
+docker push yourusername/metricsd:latest
+```
+
+**Optimizing the Build**
+
+Create a `.dockerignore` file to exclude unnecessary files:
+
+```
+# .dockerignore
+.git
+.gitignore
+.github
+README.md
+LICENSE
+*.md
+.vscode
+.idea
+bin/
+*.log
+*.tmp
+.env
+.DS_Store
+Makefile
+docker-compose.yml
+```
+
+**Build Troubleshooting**
+
+Common build issues:
+
+```bash
+# Issue: "cannot find package"
+# Solution: Ensure go.mod and go.sum are present
+go mod tidy
+docker build -t metricsd:latest .
+
+# Issue: "no space left on device"
+# Solution: Clean up Docker
+docker system prune -a --volumes
+
+# Issue: Build is slow
+# Solution: Use BuildKit (faster builds)
+DOCKER_BUILDKIT=1 docker build -t metricsd:latest .
+
+# Issue: Platform mismatch (M1 Mac, ARM)
+# Solution: Build for specific platform
+docker build --platform linux/amd64 -t metricsd:latest .
+
+# Issue: Can't connect to Docker daemon
+# Solution: Start Docker or check permissions
+sudo systemctl start docker  # Linux
+sudo usermod -aG docker $USER  # Add user to docker group
+```
+
+#### Docker Compose Files
+
+**docker-compose.yml** (for container metrics):
 ```yaml
 version: '3.8'
 
@@ -782,33 +903,187 @@ networks:
     driver: bridge
 ```
 
-**Build and run:**
+**docker-compose.yml** (for HOST metrics - recommended for production):
+```yaml
+version: '3.8'
+
+services:
+  metricsd:
+    build: .
+    image: metricsd:latest
+    container_name: metricsd
+    restart: unless-stopped
+    # Use host network to access host metrics
+    network_mode: host
+    # Use host PID namespace to see host processes
+    pid: host
+    volumes:
+      # Mount host filesystems for accurate host metrics
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.json:/etc/metricsd/config.json:ro
+      - ./certs:/etc/metricsd/certs:ro
+    environment:
+      # Tell gopsutil to use host filesystems
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ROOT=/rootfs
+      - MC_LOG_LEVEL=info
+      - MC_SHIPPER_ENDPOINT=https://prometheus:9090/api/v1/write
+      - MC_TLS_ENABLED=true
+      - MC_TLS_CERT_FILE=/etc/metricsd/certs/client.crt
+      - MC_TLS_KEY_FILE=/etc/metricsd/certs/client.key
+      - MC_TLS_CA_FILE=/etc/metricsd/certs/ca.crt
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # Privileged mode may be needed for full system access
+    # privileged: true
+    # Or use specific capabilities
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+```
+
+#### Running the Container
+
+**Prerequisites:**
+- Built Docker image (see steps above)
+- `config.json` file prepared
+- TLS certificates (optional, if using TLS)
+
+**Option 1: Quick Start (Container Metrics)**
+
 ```bash
-# Build image
-docker build -t metricsd:latest .
+# Prepare configuration
+cp config.example.json config.json
+# Edit config.json with your settings
 
 # Run container
 docker run -d \
   --name metricsd \
   -p 8080:8080 \
   -v $(pwd)/config.json:/etc/metricsd/config.json:ro \
-  -v $(pwd)/certs:/etc/metricsd/certs:ro \
   -e MC_LOG_LEVEL=info \
   metricsd:latest
 
-# Using docker-compose
-docker-compose up -d
+# Check if it's running
+docker ps | grep metricsd
 
 # View logs
 docker logs -f metricsd
 
 # Check health
+curl http://localhost:8080/health
+```
+
+**Option 2: With TLS (Secure)**
+
+```bash
+# Ensure you have certificates
+ls -la certs/
+# Should have: client.crt, client.key, ca.crt
+
+# Run with TLS
+docker run -d \
+  --name metricsd \
+  -p 8080:8080 \
+  -v $(pwd)/config.json:/etc/metricsd/config.json:ro \
+  -v $(pwd)/certs:/etc/metricsd/certs:ro \
+  -e MC_LOG_LEVEL=info \
+  -e MC_TLS_ENABLED=true \
+  -e MC_TLS_CERT_FILE=/etc/metricsd/certs/client.crt \
+  -e MC_TLS_KEY_FILE=/etc/metricsd/certs/client.key \
+  -e MC_TLS_CA_FILE=/etc/metricsd/certs/ca.crt \
+  metricsd:latest
+```
+
+**Option 3: Host Metrics Collection (Recommended for Production)**
+
+This mounts host filesystems to collect actual host metrics instead of container metrics:
+
+```bash
+docker run -d \
+  --name metricsd-host \
+  --pid=host \
+  --network=host \
+  --restart=unless-stopped \
+  -v /:/rootfs:ro \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v $(pwd)/config.json:/etc/metricsd/config.json:ro \
+  -v $(pwd)/certs:/etc/metricsd/certs:ro \
+  -e HOST_PROC=/host/proc \
+  -e HOST_SYS=/host/sys \
+  -e HOST_ROOT=/rootfs \
+  -e MC_LOG_LEVEL=info \
+  metricsd:latest
+```
+
+**Option 4: Using Docker Compose (Easiest)**
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f metricsd
+
+# Stop
+docker-compose down
+
+# Rebuild and restart
+docker-compose up -d --build
+
+# View service status
+docker-compose ps
+```
+
+**Container Management:**
+
+```bash
+# Stop container
+docker stop metricsd
+
+# Start container
+docker start metricsd
+
+# Restart container
+docker restart metricsd
+
+# Remove container
+docker rm -f metricsd
+
+# View logs (last 100 lines)
+docker logs --tail 100 metricsd
+
+# Follow logs in real-time
+docker logs -f metricsd
+
+# Check container health status
 docker inspect --format='{{.State.Health.Status}}' metricsd
+
+# Execute command in container
+docker exec -it metricsd sh
+
+# View container resource usage
+docker stats metricsd
+
+# Export container logs to file
+docker logs metricsd > metricsd.log 2>&1
 ```
 
 ### Kubernetes
 
-**deployment.yaml:**
+> **Note:** The Deployment below collects **pod/container** metrics. To collect **node/host** metrics in Kubernetes, use a **DaemonSet** instead. See the "Collecting Host Metrics from Docker Container" section for a DaemonSet example.
+
+**deployment.yaml** (for pod metrics):
 ```yaml
 apiVersion: v1
 kind: Namespace
@@ -972,6 +1247,187 @@ kubectl create secret generic metricsd-tls \
 kubectl apply -f deployment.yaml
 kubectl get pods -n monitoring
 kubectl logs -f -n monitoring deployment/metricsd
+```
+
+### Collecting Host Metrics from Docker Container
+
+By default, a containerized application collects metrics from **inside the container** (container CPU, container memory, etc.). To collect metrics from the **host system** instead, you need to mount host filesystems into the container.
+
+#### Why This Matters
+
+- **Container metrics**: Shows resource usage of the container itself (limited by cgroups)
+- **Host metrics**: Shows actual host machine CPU, memory, disk, and network usage
+- **Use case**: Monitoring the physical/virtual machine where Docker is running
+
+#### Required Mounts
+
+Mount these host paths into your container:
+
+| Host Path | Container Mount | Purpose |
+|-----------|----------------|---------|
+| `/proc` | `/host/proc:ro` | Process information, CPU stats |
+| `/sys` | `/host/sys:ro` | System information, block devices |
+| `/` | `/rootfs:ro` | Root filesystem for disk metrics |
+| `/var/run/docker.sock` | `/var/run/docker.sock:ro` | Docker socket (optional) |
+
+#### Environment Variables
+
+Set these environment variables to tell the `gopsutil` library to use host paths:
+
+```bash
+HOST_PROC=/host/proc
+HOST_SYS=/host/sys
+HOST_ROOT=/rootfs
+```
+
+#### Complete Example
+
+```bash
+docker run -d \
+  --name metricsd-host-metrics \
+  --pid=host \
+  --network=host \
+  --restart=unless-stopped \
+  -v /:/rootfs:ro \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v $(pwd)/config.json:/etc/metricsd/config.json:ro \
+  -e HOST_PROC=/host/proc \
+  -e HOST_SYS=/host/sys \
+  -e HOST_ROOT=/rootfs \
+  -e MC_LOG_LEVEL=info \
+  metricsd:latest
+```
+
+#### Docker Compose Example
+
+```yaml
+version: '3.8'
+
+services:
+  metricsd-host:
+    image: metricsd:latest
+    container_name: metricsd-host-metrics
+    restart: unless-stopped
+    network_mode: host  # Access host network interfaces
+    pid: host           # Access host processes
+    volumes:
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.json:/etc/metricsd/config.json:ro
+      - ./certs:/etc/metricsd/certs:ro
+    environment:
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ROOT=/rootfs
+    cap_add:
+      - SYS_PTRACE  # For process monitoring
+```
+
+#### Security Considerations
+
+When collecting host metrics:
+
+- ✅ **Use read-only mounts** (`:ro`) for host filesystems
+- ✅ **Minimize capabilities** - only add what's needed (SYS_PTRACE, SYS_ADMIN)
+- ⚠️ **Avoid `privileged: true`** unless absolutely necessary
+- ✅ **Run as non-root user** when possible
+- ✅ **Review mounted paths** - only mount what you need
+
+#### Kubernetes DaemonSet for Host Metrics
+
+For Kubernetes, use a DaemonSet to run one pod per node:
+
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: metricsd-host
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: metricsd-host
+  template:
+    metadata:
+      labels:
+        app: metricsd-host
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: metricsd
+        image: metricsd:latest
+        env:
+        - name: HOST_PROC
+          value: /host/proc
+        - name: HOST_SYS
+          value: /host/sys
+        - name: HOST_ROOT
+          value: /rootfs
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: root
+          mountPath: /rootfs
+          readOnly: true
+        - name: config
+          mountPath: /etc/metricsd
+        - name: certs
+          mountPath: /etc/metricsd/certs
+        securityContext:
+          capabilities:
+            add:
+            - SYS_PTRACE
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: root
+        hostPath:
+          path: /
+      - name: config
+        configMap:
+          name: metricsd-config
+      - name: certs
+        secret:
+          secretName: metricsd-tls
+```
+
+#### Verifying Host Metrics Collection
+
+Check the logs to ensure host metrics are being collected:
+
+```bash
+# Check logs
+docker logs metricsd-host-metrics
+
+# You should see metrics for ALL host CPUs, not just container limits
+# Example: If host has 16 cores, you should see metrics for all 16
+
+# Test with debug logging
+docker run --rm -it \
+  --pid=host \
+  -v /proc:/host/proc:ro \
+  -v /sys:/host/sys:ro \
+  -v $(pwd)/config.json:/etc/metricsd/config.json:ro \
+  -e HOST_PROC=/host/proc \
+  -e HOST_SYS=/host/sys \
+  metricsd:latest -config /etc/metricsd/config.json -log-level debug
 ```
 
 ## Performance Tuning
@@ -1308,6 +1764,12 @@ A: Enable debug logging with `-log-level debug` and review the detailed TLS hand
 
 **Q: Is IPv6 supported?**
 A: Yes, both IPv4 and IPv6 are supported for all network operations.
+
+**Q: How do I collect host metrics when running in Docker?**
+A: Mount the host's `/proc`, `/sys`, and `/` into the container and set environment variables. See the "Collecting Host Metrics from Docker Container" section for complete instructions.
+
+**Q: Why are my CPU/memory metrics showing container limits instead of host resources?**
+A: Without host filesystem mounts, the container only sees its own cgroup limits. Mount host paths and set `HOST_PROC=/host/proc` and `HOST_SYS=/host/sys` to collect host metrics.
 
 ## Roadmap
 

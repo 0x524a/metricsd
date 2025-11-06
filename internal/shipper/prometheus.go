@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/rs/zerolog/log"
 
-	"github.com/0x524a/metrics-collector/internal/collector"
+	"github.com/0x524A/metricsd/internal/collector"
 )
 
 // PrometheusRemoteWriteShipper ships metrics using Prometheus remote write protocol (Single Responsibility Principle)

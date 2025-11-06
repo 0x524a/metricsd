@@ -1,0 +1,57 @@
+# Git
+.git
+.gitignore
+.github
+.gitattributes
+
+# Documentation
+README.md
+*.md
+LICENSE
+docs/
+
+# IDE and Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+
+# Logs
+*.log
+*.tmp
+*.pid
+
+# Environment and config (use volumes instead)
+.env
+config.json
+*.local.json
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Misc
+Makefile
+*.bak
+*.backup
+node_modules/
+vendor/

@@ -6,8 +6,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/0x524a/metrics-collector/internal/collector"
-	"github.com/0x524a/metrics-collector/internal/shipper"
+	"github.com/0x524A/metricsd/internal/collector"
+	"github.com/0x524A/metricsd/internal/shipper"
 )
 
 // Orchestrator coordinates the collection and shipping of metrics (Single Responsibility Principle)
