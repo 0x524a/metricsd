@@ -14,7 +14,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/0x524a/metrics-collector/internal/collector"
+	"github.com/0x524A/metricsd/internal/collector"
 )
 
 // HTTPJSONShipper ships metrics as JSON via HTTP POST (Single Responsibility Principle)

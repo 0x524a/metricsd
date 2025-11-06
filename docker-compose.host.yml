@@ -1,0 +1,50 @@
+version: '3.8'
+
+# This docker-compose file collects HOST metrics instead of container metrics
+# Use this for production monitoring of the physical/virtual machine
+
+services:
+  metricsd:
+    build: .
+    image: metricsd:latest
+    container_name: metricsd-host-metrics
+    restart: unless-stopped
+    
+    # Use host network to access host metrics
+    network_mode: host
+    
+    # Use host PID namespace to see host processes
+    pid: host
+    
+    volumes:
+      # Mount host filesystems for accurate host metrics
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.json:/etc/metricsd/config.json:ro
+      - ./certs:/etc/metricsd/certs:ro
+    
+    environment:
+      # Tell gopsutil to use host filesystems
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ROOT=/rootfs
+      - MC_LOG_LEVEL=${MC_LOG_LEVEL:-info}
+      - MC_SHIPPER_ENDPOINT=${MC_SHIPPER_ENDPOINT:-https://prometheus:9090/api/v1/write}
+      - MC_TLS_ENABLED=${MC_TLS_ENABLED:-false}
+      - MC_TLS_CERT_FILE=/etc/metricsd/certs/client.crt
+      - MC_TLS_KEY_FILE=/etc/metricsd/certs/client.key
+      - MC_TLS_CA_FILE=/etc/metricsd/certs/ca.crt
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    # Add specific capabilities instead of privileged mode
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN

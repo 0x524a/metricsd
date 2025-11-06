@@ -3,7 +3,7 @@ package shipper
 import (
 	"context"
 
-	"github.com/0x524a/metrics-collector/internal/collector"
+	"github.com/0x524A/metricsd/internal/collector"
 )
 
 // Shipper is the interface for shipping metrics to remote endpoints (Interface Segregation Principle)
