@@ -2,9 +2,15 @@
 
 [![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Go Report Card](https://goreportcard.com/badge/github.com/0x524A/metricsd)](https://goreportcard.com/report/github.com/0x524A/metricsd)
+[![GitHub Release](https://img.shields.io/github/v/release/0x524A/metricsd)](https://github.com/0x524A/metricsd/releases)
+[![Docker Image Size](https://img.shields.io/docker/image-size/0x524a/metricsd/latest)](https://hub.docker.com/r/0x524a/metricsd)
+[![GitHub Issues](https://img.shields.io/github/issues/0x524A/metricsd)](https://github.com/0x524A/metricsd/issues)
+[![GitHub Stars](https://img.shields.io/github/stars/0x524A/metricsd?style=social)](https://github.com/0x524A/metricsd/stargazers)
 
 A production-ready, high-performance metrics collector service written in Go that collects system and application metrics and ships them to remote endpoints with enterprise-grade security.
+
+> **🚀 Features**: System metrics (CPU, Memory, Disk, Network) • GPU monitoring (NVIDIA) • Application endpoint scraping • TLS/mTLS support • Prometheus & HTTP JSON shipping • Docker & Kubernetes ready
 
 ## Table of Contents
 
@@ -32,7 +38,7 @@ Get metricsd up and running in 5 minutes:
 
 ```bash
 # Clone and build
-git clone https://github.com/yourusername/metricsd.git
+git clone https://github.com/0x524A/metricsd.git
 cd metricsd
 go build -o bin/metricsd cmd/metricsd/main.go
 
@@ -636,7 +642,7 @@ Create `/etc/systemd/system/metricsd.service`:
 ```ini
 [Unit]
 Description=Metrics Collector Service (metricsd)
-Documentation=https://github.com/yourusername/metricsd
+Documentation=https://github.com/0x524A/metricsd
 After=network-online.target
 Wants=network-online.target
 
@@ -804,14 +810,14 @@ docker run --rm metricsd:latest -help
 
 ```bash
 # Tag for Docker Hub
-docker tag metricsd:latest yourusername/metricsd:latest
-docker tag metricsd:latest yourusername/metricsd:v1.0.0
+docker tag metricsd:latest 0x524A/metricsd:latest
+docker tag metricsd:latest 0x524A/metricsd:v1.0.0
 
 # Tag for private registry
 docker tag metricsd:latest registry.example.com/metricsd:latest
 
 # Push to registry
-docker push yourusername/metricsd:latest
+docker push 0x524A/metricsd:latest
 ```
 
 **Optimizing the Build**
@@ -1481,7 +1487,7 @@ The service exposes its own health endpoint:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/metricsd.git
+git clone https://github.com/0x524A/metricsd.git
 cd metricsd
 
 # Install dependencies
@@ -1816,8 +1822,8 @@ Contributions are welcome! Here's how you can help:
 
 ### Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/metricsd/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/metricsd/discussions)
+- **Issues**: [GitHub Issues](https://github.com/0x524A/metricsd/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/0x524A/metricsd/discussions)
 - **Documentation**: This README and inline code comments
 
 ### Reporting Bugs
@@ -1850,7 +1856,7 @@ Built with:
 
 - **Your Name** - *Initial work*
 
-See also the list of [contributors](https://github.com/yourusername/metricsd/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/0x524A/metricsd/contributors) who participated in this project.
 
 ---
 
