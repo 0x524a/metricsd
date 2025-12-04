@@ -27,5 +27,18 @@
     "environment": "poc",
     "location": "local"
   },
-  "endpoints": []
+  "endpoints": [
+    {
+      "name": "rabbitmq",
+      "url": "http://localhost:15692/metrics"
+    },
+    {
+      "name": "postgres",
+      "url": "http://localhost:9187/metrics"
+    },
+    {
+      "name": "test_generator",
+      "url": "http://localhost:8081/metrics"
+    }
+  ]
 }
