@@ -4,7 +4,7 @@
     "port": 8080
   },
   "collector": {
-    "interval_seconds": 60,
+    "interval_seconds": 30,
     "enable_cpu": true,
     "enable_memory": true,
     "enable_disk": true,
@@ -12,8 +12,8 @@
     "enable_gpu": false
   },
   "shipper": {
-    "type": "http_json",
-    "endpoint": "http://localhost:9090/api/v1/metrics",
+    "type": "prometheus_remote_write",
+    "endpoint": "http://YOUR_CLOUD_IP:9090/api/v1/write",
     "timeout": 30000000000,
     "tls": {
       "enabled": false,
@@ -23,14 +23,9 @@
       "insecure_skip_verify": false
     }
   },
-  "endpoints": [
-    {
-      "name": "app1",
-      "url": "http://localhost:3000/metrics"
-    },
-    {
-      "name": "app2",
-      "url": "http://localhost:3001/metrics"
-    }
-  ]
+  "global_labels": {
+    "environment": "poc",
+    "location": "local"
+  },
+  "endpoints": []
 }
