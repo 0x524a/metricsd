@@ -1,0 +1,105 @@
+version: '3.8'
+
+# Test services with metrics enabled for metricsd PoC
+# Run alongside metricsd binary to test metrics collection
+
+services:
+  # ===========================================
+  # RabbitMQ with Prometheus metrics plugin
+  # ===========================================
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"      # AMQP
+      - "15672:15672"    # Management UI
+      - "15692:15692"    # Prometheus metrics
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      # Enable prometheus plugin
+      RABBITMQ_PLUGINS: "rabbitmq_management rabbitmq_prometheus"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - services
+
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: testdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - services
+
+  # ===========================================
+  # PostgreSQL Exporter for Prometheus metrics
+  # ===========================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://admin:admin123@postgres:5432/testdb?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - services
+
+  # ===========================================
+  # Test Service - Generates sample load
+  # ===========================================
+  test-generator:
+    build:
+      context: ./test-generator
+      dockerfile: Dockerfile
+    container_name: test-generator
+    environment:
+      RABBITMQ_URL: "amqp://admin:admin123@rabbitmq:5672/"
+      POSTGRES_URL: "postgres://admin:admin123@postgres:5432/testdb?sslmode=disable"
+      METRICS_PORT: "8081"
+    ports:
+      - "8081:8081"    # Prometheus metrics endpoint
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - services
+    restart: unless-stopped
+
+networks:
+  services:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+
