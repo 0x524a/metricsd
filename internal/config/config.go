@@ -10,10 +10,11 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server     ServerConfig     `json:"server"`
-	Collector  CollectorConfig  `json:"collector"`
-	Shipper    ShipperConfig    `json:"shipper"`
-	Endpoints  []EndpointConfig `json:"endpoints"`
+	Server       ServerConfig      `json:"server"`
+	Collector    CollectorConfig   `json:"collector"`
+	Shipper      ShipperConfig     `json:"shipper"`
+	Endpoints    []EndpointConfig  `json:"endpoints"`
+	GlobalLabels map[string]string `json:"global_labels,omitempty"` // Optional global labels added to all metrics
 }
 
 // ServerConfig contains HTTP server settings

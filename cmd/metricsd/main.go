@@ -53,12 +53,25 @@ func main() {
 	metricShipper := setupShipper(cfg)
 	defer metricShipper.Close()
 
-	// Create orchestrator
-	orch := orchestrator.NewOrchestrator(
-		collectorRegistry,
-		metricShipper,
-		cfg.GetCollectionInterval(),
-	)
+	// Create orchestrator with global labels support
+	var orch *orchestrator.Orchestrator
+	if len(cfg.GlobalLabels) > 0 {
+		orch = orchestrator.NewOrchestratorWithLabels(
+			collectorRegistry,
+			metricShipper,
+			cfg.GetCollectionInterval(),
+			cfg.GlobalLabels,
+		)
+		log.Info().
+			Interface("global_labels", cfg.GlobalLabels).
+			Msg("Orchestrator initialized with global labels")
+	} else {
+		orch = orchestrator.NewOrchestrator(
+			collectorRegistry,
+			metricShipper,
+			cfg.GetCollectionInterval(),
+		)
+	}
 
 	// Create HTTP server for health checks
 	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port)

@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning
+# Automatically loads dashboards from /var/lib/grafana/dashboards
+
+apiVersion: 1
+
+providers:
+  - name: 'Metricsd Dashboards'
+    orgId: 1
+    folder: 'Metricsd'
+    folderUid: 'metricsd'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+

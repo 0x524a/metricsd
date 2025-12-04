@@ -1,0 +1,77 @@
+version: '3.8'
+
+# Client-side metricsd deployment for edge devices
+# This configuration collects HOST metrics and ships them to the cloud
+#
+# Usage:
+#   1. Copy this folder to your edge device
+#   2. Update config.client.json with your cloud Prometheus endpoint
+#   3. Run: docker-compose -f docker-compose.client.yml up -d
+
+services:
+  metricsd:
+    image: metricsd:latest
+    # Or use from Docker Hub when published:
+    # image: 0x524a/metricsd:latest
+    container_name: metricsd-client
+    restart: unless-stopped
+    
+    # Use host network for accurate network metrics and easy cloud access
+    network_mode: host
+    
+    # Use host PID namespace to see all host processes
+    pid: host
+    
+    volumes:
+      # Mount host filesystems for accurate host metrics
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+      # Configuration file
+      - ./config.client.json:/etc/metricsd/config.json:ro
+      
+      # TLS certificates (optional)
+      - ./certs:/etc/metricsd/certs:ro
+    
+    environment:
+      # Tell gopsutil to use host filesystems
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - HOST_ROOT=/rootfs
+      
+      # Logging
+      - MC_LOG_LEVEL=${MC_LOG_LEVEL:-info}
+      
+      # Override endpoint via environment variable (optional)
+      # - MC_SHIPPER_ENDPOINT=http://your-cloud-ip:9090/api/v1/write
+      
+      # TLS configuration (optional)
+      - MC_TLS_ENABLED=${MC_TLS_ENABLED:-false}
+      - MC_TLS_CERT_FILE=/etc/metricsd/certs/client.crt
+      - MC_TLS_KEY_FILE=/etc/metricsd/certs/client.key
+      - MC_TLS_CA_FILE=/etc/metricsd/certs/ca.crt
+    
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    # Security: Add minimal capabilities instead of privileged mode
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+

@@ -1,0 +1,6 @@
+# Place TLS certificates here when using secure communication
+# Required files for TLS:
+# - client.crt  (client certificate)
+# - client.key  (client private key)
+# - ca.crt      (CA certificate for server verification)
+

@@ -1,0 +1,32 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "collector": {
+    "interval_seconds": 60,
+    "enable_cpu": true,
+    "enable_memory": true,
+    "enable_disk": true,
+    "enable_network": true,
+    "enable_gpu": false
+  },
+  "shipper": {
+    "type": "prometheus_remote_write",
+    "endpoint": "http://YOUR_CLOUD_IP:9090/api/v1/write",
+    "timeout": 30000000000,
+    "tls": {
+      "enabled": false,
+      "cert_file": "",
+      "key_file": "",
+      "ca_file": "",
+      "insecure_skip_verify": false
+    }
+  },
+  "global_labels": {
+    "environment": "production",
+    "region": "default"
+  },
+  "endpoints": []
+}
+
