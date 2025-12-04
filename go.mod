@@ -8,7 +8,7 @@ require (
 	github.com/NVIDIA/go-nvml v0.12.0-2
 	github.com/golang/snappy v1.0.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.67.1
+	github.com/prometheus/common v0.67.4
 	github.com/prometheus/prometheus v0.307.3
 	github.com/rs/zerolog v1.31.0
 	github.com/shirou/gopsutil/v3 v3.23.10
@@ -33,7 +33,7 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
