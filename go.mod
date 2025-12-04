@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.7
 
 require (
-	github.com/NVIDIA/go-nvml v0.12.0-2
+	github.com/NVIDIA/go-nvml v0.13.0-1
 	github.com/golang/snappy v1.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.4
