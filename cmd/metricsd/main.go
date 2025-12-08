@@ -185,6 +185,25 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 		log.Info().Int("endpoint_count", len(endpoints)).Msg("HTTP collector registered")
 	}
 
+	// Register plugin collectors (per-plugin intervals handled internally)
+	pluginDefs, err := collector.LoadPlugins(cfg.Plugins.Directory)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load plugin definitions")
+	}
+	if len(pluginDefs) > 0 {
+		pluginCollector, err := collector.NewPluginCollector(cfg.Plugins.Prefix, cfg.Plugins.Directory, pluginDefs)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to initialize plugin collector")
+		}
+		registry.Register(pluginCollector)
+		log.Info().
+			Int("plugin_count", len(pluginDefs)).
+			Str("plugins_dir", cfg.Plugins.Directory).
+			Msg("Plugin collector registered")
+	} else {
+		log.Info().Str("plugins_dir", cfg.Plugins.Directory).Msg("No plugins discovered")
+	}
+
 	return registry
 }
 

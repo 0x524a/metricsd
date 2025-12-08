@@ -11,6 +11,10 @@
     "enable_network": true,
     "enable_gpu": false
   },
+  "plugins": {
+    "directory": "plugins",
+    "prefix": "metricsd_plugin_"
+  },
   "shipper": {
     "type": "prometheus_remote_write",
     "endpoint": "http://YOUR_CLOUD_IP:9090/api/v1/write",

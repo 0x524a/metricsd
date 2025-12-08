@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Collector    CollectorConfig   `json:"collector"`
 	Shipper      ShipperConfig     `json:"shipper"`
 	Endpoints    []EndpointConfig  `json:"endpoints"`
+	Plugins      PluginConfig      `json:"plugins,omitempty"`
 	GlobalLabels map[string]string `json:"global_labels,omitempty"` // Optional global labels added to all metrics
 }
 
@@ -56,6 +58,14 @@ type EndpointConfig struct {
 	URL  string `json:"url"`
 }
 
+// PluginConfig configures optional plugin-based custom metrics
+type PluginConfig struct {
+	// Directory containing plugin definition files (json). Default: "plugins"
+	Directory string `json:"directory"`
+	// Global metric prefix applied to every plugin metric name. Default: "metricsd_plugin_"
+	Prefix string `json:"prefix"`
+}
+
 // Load reads configuration from a JSON file and applies environment variable overrides
 func Load(configPath string) (*Config, error) {
 	// Read config file
@@ -71,6 +81,9 @@ func Load(configPath string) (*Config, error) {
 
 	// Apply environment variable overrides
 	applyEnvOverrides(&cfg)
+
+	// Apply defaults
+	applyDefaults(&cfg)
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -115,6 +128,21 @@ func applyEnvOverrides(cfg *Config) {
 	if val := os.Getenv("MC_TLS_CA_FILE"); val != "" {
 		cfg.Shipper.TLS.CAFile = val
 	}
+	if val := os.Getenv("MC_PLUGINS_DIR"); val != "" {
+		cfg.Plugins.Directory = val
+	}
+	if val := os.Getenv("MC_PLUGIN_PREFIX"); val != "" {
+		cfg.Plugins.Prefix = val
+	}
+}
+
+func applyDefaults(cfg *Config) {
+	if cfg.Plugins.Directory == "" {
+		cfg.Plugins.Directory = "plugins"
+	}
+	if cfg.Plugins.Prefix == "" {
+		cfg.Plugins.Prefix = "metricsd_plugin_"
+	}
 }
 
 // Validate checks if the configuration is valid
@@ -139,6 +167,14 @@ func (c *Config) Validate() error {
 		if c.Shipper.TLS.CertFile == "" || c.Shipper.TLS.KeyFile == "" {
 			return fmt.Errorf("TLS cert and key files are required when TLS is enabled")
 		}
+	}
+
+	if c.Plugins.Prefix == "" {
+		return fmt.Errorf("plugin prefix cannot be empty")
+	}
+	prefixRegex := regexp.MustCompile(`^[a-zA-Z_:][a-zA-Z0-9_:]*$`)
+	if !prefixRegex.MatchString(c.Plugins.Prefix) {
+		return fmt.Errorf("plugin prefix '%s' must match regex %s", c.Plugins.Prefix, prefixRegex.String())
 	}
 
 	return nil
