@@ -33,4 +33,3 @@ func (c *GPUCollector) Collect(ctx context.Context) ([]Metric, error) {
 func (c *GPUCollector) Shutdown() error {
 	return nil
 }
-

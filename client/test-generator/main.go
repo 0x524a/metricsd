@@ -393,4 +393,3 @@ func consumeMessages(ctx context.Context, ch *amqp.Channel, queueName string) {
 		}
 	}
 }
-

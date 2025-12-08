@@ -1,0 +1,12 @@
+[
+  {
+    "name": "bandwidth_tx_cmd",
+    "metric": "bandwidth_tx_bytes_total",
+    "metric_type": "counter",
+    "interval_seconds": 15,
+    "parser": { "mode": "number" },
+    "command": { "command": ["sh", "-c", "cat /proc/net/dev | grep eth0 | awk '{print $10}'"] },
+    "labels": { "interface": "eth0", "direction": "tx" }
+  }
+]
+

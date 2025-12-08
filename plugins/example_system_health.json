@@ -1,0 +1,66 @@
+[
+  {
+    "name": "uptime_seconds",
+    "metric": "system_uptime_seconds",
+    "metric_type": "gauge",
+    "interval_seconds": 30,
+    "parser": { "mode": "number" },
+    "file": { "path": "/proc/uptime" },
+    "labels": { "source": "proc" }
+  },
+  {
+    "name": "loadavg_1m",
+    "metric": "system_loadavg_1m",
+    "metric_type": "gauge",
+    "interval_seconds": 30,
+    "parser": { "mode": "regex", "regex": "^([0-9.]+)" },
+    "file": { "path": "/proc/loadavg" },
+    "labels": { "source": "proc" }
+  },
+  {
+    "name": "netpulse_download_mbps",
+    "metric": "netpulse_download_mbps",
+    "metric_type": "gauge",
+    "interval_seconds": 300,
+    "parser": { "mode": "number" },
+    "command": {
+      "command": [
+        "sh",
+        "-c",
+        "netpulse -provider fastcom -duration 10s -urls 5 -verbose | grep 'Download Speed' | head -n1 | awk '{print $(NF-1)}'"
+      ]
+    },
+    "labels": { "runtime": "netpulse", "metric": "download_mbps", "provider": "fastcom" }
+  },
+  {
+    "name": "netpulse_upload_mbps",
+    "metric": "netpulse_upload_mbps",
+    "metric_type": "gauge",
+    "interval_seconds": 300,
+    "parser": { "mode": "number" },
+    "command": {
+      "command": [
+        "sh",
+        "-c",
+        "netpulse -provider fastcom -duration 10s -urls 5 -verbose | grep 'Upload Speed' | head -n1 | awk '{print $(NF-1)}'"
+      ]
+    },
+    "labels": { "runtime": "netpulse", "metric": "upload_mbps", "provider": "fastcom" }
+  },
+  {
+    "name": "usg_failed_checks",
+    "metric": "usg_failed_checks",
+    "metric_type": "gauge",
+    "interval_seconds": 600,
+    "parser": { "mode": "number" },
+    "command": {
+      "command": [
+        "sh",
+        "-c",
+        "usg audit | grep -i failed | wc -l"
+      ]
+    },
+    "labels": { "tool": "usg", "metric": "failed_checks" }
+  }
+]
+

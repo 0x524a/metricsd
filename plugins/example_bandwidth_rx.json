@@ -1,0 +1,12 @@
+[
+  {
+    "name": "bandwidth_rx",
+    "metric": "bandwidth_rx_bytes_total",
+    "metric_type": "counter",
+    "interval_seconds": 15,
+    "parser": { "mode": "number" },
+    "file": { "path": "/sys/class/net/eth0/statistics/rx_bytes" },
+    "labels": { "interface": "eth0", "direction": "rx" }
+  }
+]
+

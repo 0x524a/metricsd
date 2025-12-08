@@ -1,0 +1,39 @@
+[
+  {
+    "name": "docker_cpu_percent",
+    "metric": "container_docker_cpu_percent",
+    "metric_type": "gauge",
+    "interval_seconds": 15,
+    "parser": { "mode": "regex", "regex": "([0-9.]+)" },
+    "command": { "command": ["sh", "-c", "docker stats --no-stream --format '{{.CPUPerc}}' my-container"] },
+    "labels": { "container": "my-container", "runtime": "docker", "metric": "cpu_percent" }
+  },
+  {
+    "name": "docker_mem_percent",
+    "metric": "container_docker_mem_percent",
+    "metric_type": "gauge",
+    "interval_seconds": 15,
+    "parser": { "mode": "regex", "regex": "([0-9.]+)" },
+    "command": { "command": ["sh", "-c", "docker stats --no-stream --format '{{.MemPerc}}' my-container"] },
+    "labels": { "container": "my-container", "runtime": "docker", "metric": "mem_percent" }
+  },
+  {
+    "name": "nerdctl_cpu_percent",
+    "metric": "container_nerdctl_cpu_percent",
+    "metric_type": "gauge",
+    "interval_seconds": 15,
+    "parser": { "mode": "regex", "regex": "([0-9.]+)" },
+    "command": { "command": ["sh", "-c", "nerdctl stats --no-stream --format '{{.CPUPerc}}' my-container"] },
+    "labels": { "container": "my-container", "runtime": "nerdctl", "metric": "cpu_percent" }
+  },
+  {
+    "name": "nerdctl_mem_percent",
+    "metric": "container_nerdctl_mem_percent",
+    "metric_type": "gauge",
+    "interval_seconds": 15,
+    "parser": { "mode": "regex", "regex": "([0-9.]+)" },
+    "command": { "command": ["sh", "-c", "nerdctl stats --no-stream --format '{{.MemPerc}}' my-container"] },
+    "labels": { "container": "my-container", "runtime": "nerdctl", "metric": "mem_percent" }
+  }
+]
+
