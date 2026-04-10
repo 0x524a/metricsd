@@ -66,6 +66,9 @@ func NewSplunkHECShipper(endpoint, token string, tlsEnabled bool, certFile, keyF
 	}
 
 	// Ensure endpoint has the correct path for HEC
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint URL is required")
+	}
 	if endpoint[len(endpoint)-1] != '/' {
 		endpoint += "/"
 	}

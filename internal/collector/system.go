@@ -80,12 +80,13 @@ func (c *SystemCollector) Collect(ctx context.Context) ([]Metric, error) {
 func (c *SystemCollector) collectCPU(ctx context.Context) ([]Metric, error) {
 	metrics := make([]Metric, 0)
 
-	// CPU usage per core
+	// CPU usage per core (single call, avoids blocking twice)
 	percentages, err := cpu.PercentWithContext(ctx, 1*time.Second, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get CPU percentages: %w", err)
 	}
 
+	var totalPercent float64
 	for i, percent := range percentages {
 		metrics = append(metrics, Metric{
 			Name: "system_cpu_usage_percent",
@@ -95,15 +96,15 @@ func (c *SystemCollector) collectCPU(ctx context.Context) ([]Metric, error) {
 			Value: percent,
 			Type:  "gauge",
 		})
+		totalPercent += percent
 	}
 
-	// Overall CPU usage
-	totalPercent, err := cpu.PercentWithContext(ctx, 1*time.Second, false)
-	if err == nil && len(totalPercent) > 0 {
+	// Derive overall CPU usage from per-core averages
+	if len(percentages) > 0 {
 		metrics = append(metrics, Metric{
 			Name:   "system_cpu_usage_total_percent",
 			Labels: map[string]string{},
-			Value:  totalPercent[0],
+			Value:  totalPercent / float64(len(percentages)),
 			Type:   "gauge",
 		})
 	}

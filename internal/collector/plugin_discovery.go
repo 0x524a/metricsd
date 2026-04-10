@@ -54,6 +54,16 @@ func DiscoverPlugins(cfg PluginDiscoveryConfig) ([]*PluginCollector, error) {
 		return nil, fmt.Errorf("failed to read plugins directory: %w", err)
 	}
 
+	// Resolve the plugins directory to an absolute path for symlink safety checks
+	absPluginsDir, err := filepath.Abs(cfg.PluginsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve plugins directory: %w", err)
+	}
+	resolvedPluginsDir, err := filepath.EvalSymlinks(absPluginsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve plugins directory symlinks: %w", err)
+	}
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -61,6 +71,24 @@ func DiscoverPlugins(cfg PluginDiscoveryConfig) ([]*PluginCollector, error) {
 
 		name := entry.Name()
 		pluginPath := filepath.Join(cfg.PluginsDir, name)
+
+		// Resolve symlinks and verify plugin stays within the plugins directory
+		resolvedPath, err := filepath.EvalSymlinks(pluginPath)
+		if err != nil {
+			log.Warn().
+				Str("file", name).
+				Err(err).
+				Msg("Failed to resolve plugin path, skipping")
+			continue
+		}
+		if !strings.HasPrefix(resolvedPath, resolvedPluginsDir+string(filepath.Separator)) && resolvedPath != resolvedPluginsDir {
+			log.Warn().
+				Str("file", name).
+				Str("resolved", resolvedPath).
+				Msg("Plugin resolves outside plugins directory, skipping")
+			continue
+		}
+		pluginPath = resolvedPath
 
 		// Skip non-plugin files (config, docs, backups, examples)
 		skipExtensions := []string{".json", ".md", ".txt", ".example", ".bak", ".log", ".old", ".swp", ".tmp"}
@@ -130,7 +158,7 @@ func DiscoverPlugins(cfg PluginDiscoveryConfig) ([]*PluginCollector, error) {
 					}
 				}
 				if val, ok := rawConfig["timeout"].(float64); ok && val > 0 {
-					config.Timeout = time.Duration(val)
+					config.Timeout = time.Duration(val) * time.Second
 				}
 				if val, ok := rawConfig["env"].([]interface{}); ok && len(val) > 0 {
 					config.Env = make([]string, 0, len(val))

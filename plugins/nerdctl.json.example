@@ -1,6 +1,6 @@
 {
   "name": "nerdctl",
-  "timeout": 60000000000,
+  "timeout": 60,
   "enabled": true,
   "env": [
     "NERDCTL_NAMESPACE=k8s.io"

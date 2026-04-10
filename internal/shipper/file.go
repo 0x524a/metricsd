@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,23 +173,37 @@ func (s *FileShipper) shipMultiMetric(metrics []collector.Metric) (int, error) {
 	// Build the fields map with metric_name:<name> keys for values
 	fields := make(map[string]interface{})
 
-	// Collect all unique dimension keys and their values
-	dimensionValues := make(map[string]string)
+	// Collect all unique dimension values per key
+	dimensionValues := make(map[string]map[string]struct{})
 
 	for _, metric := range metrics {
 		// Add metric value with metric_name:<name> key format
 		metricKey := fmt.Sprintf("metric_name:%s", metric.Name)
 		fields[metricKey] = metric.Value
 
-		// Collect dimension labels (will use last value if duplicates exist)
+		// Collect all unique values per dimension key
 		for k, v := range metric.Labels {
-			dimensionValues[k] = v
+			if dimensionValues[k] == nil {
+				dimensionValues[k] = make(map[string]struct{})
+			}
+			dimensionValues[k][v] = struct{}{}
 		}
 	}
 
-	// Add all dimensions as flat fields
-	for k, v := range dimensionValues {
-		fields[k] = v
+	// Add dimensions as flat fields; join multiple values with comma
+	for k, vals := range dimensionValues {
+		if len(vals) == 1 {
+			for v := range vals {
+				fields[k] = v
+			}
+		} else {
+			sorted := make([]string, 0, len(vals))
+			for v := range vals {
+				sorted = append(sorted, v)
+			}
+			sort.Strings(sorted)
+			fields[k] = strings.Join(sorted, ",")
+		}
 	}
 
 	event := SplunkMultiMetricEvent{

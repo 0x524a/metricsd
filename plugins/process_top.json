@@ -1,5 +1,5 @@
 {
   "name": "process_top",
-  "timeout": 15000000000,
+  "timeout": 15,
   "enabled": true
 }
