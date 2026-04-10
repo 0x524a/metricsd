@@ -15,6 +15,7 @@ import (
 	"github.com/0x524A/metricsd/internal/collector"
 	"github.com/0x524A/metricsd/internal/config"
 	"github.com/0x524A/metricsd/internal/orchestrator"
+	"github.com/0x524A/metricsd/internal/plugin"
 	"github.com/0x524A/metricsd/internal/server"
 	"github.com/0x524A/metricsd/internal/shipper"
 )
@@ -172,28 +173,46 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 		log.Info().Int("endpoint_count", len(endpoints)).Msg("HTTP collector registered")
 	}
 
-	// Register plugin collectors
+	// Register plugin manager
 	if cfg.Collector.Plugins.Enabled {
-		pluginCfg := collector.PluginDiscoveryConfig{
-			PluginsDir:        cfg.Collector.Plugins.PluginsDir,
-			Enabled:           true,
-			DefaultTimeout:    time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second,
-			ValidateOnStartup: cfg.Collector.Plugins.ValidateOnStartup,
-		}
+		pluginMgr := plugin.NewManager()
 
-		plugins, err := collector.DiscoverPlugins(pluginCfg)
+		// Discover shell plugins
+		defaultTimeout := time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second
+		if defaultTimeout == 0 {
+			defaultTimeout = plugin.DefaultTimeout
+		}
+		execPlugins, err := plugin.DiscoverPlugins(
+			cfg.Collector.Plugins.PluginsDir,
+			defaultTimeout,
+			cfg.Collector.Plugins.ValidateOnStartup,
+		)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to discover plugins")
-		} else {
-			for _, plugin := range plugins {
-				registry.Register(plugin)
-				log.Info().
-					Str("name", plugin.Name()).
-					Msg("Plugin collector registered")
+		}
+		for _, ep := range execPlugins {
+			pluginMgr.AddExecPlugin(ep)
+		}
+
+		// Instantiate registered Go plugins
+		for _, gpCfg := range cfg.Collector.Plugins.GoPlugins {
+			factories := plugin.GetRegisteredGoPlugins()
+			factory, ok := factories[gpCfg.Name]
+			if !ok {
+				log.Warn().Str("name", gpCfg.Name).Msg("No registered Go plugin factory found, skipping")
+				continue
 			}
-			if len(plugins) > 0 {
-				log.Info().Int("plugin_count", len(plugins)).Msg("Plugin collectors registered")
+			c, err := factory(gpCfg.Config)
+			if err != nil {
+				log.Warn().Str("name", gpCfg.Name).Err(err).Msg("Go plugin factory failed, skipping")
+				continue
 			}
+			pluginMgr.AddGoPlugin(gpCfg.Name, c)
+		}
+
+		if pluginMgr.PluginCount() > 0 {
+			registry.Register(pluginMgr)
+			log.Info().Int("plugin_count", pluginMgr.PluginCount()).Msg("Plugin manager registered")
 		}
 	}
 

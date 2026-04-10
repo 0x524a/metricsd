@@ -33,12 +33,19 @@ type CollectorConfig struct {
 	Plugins         PluginSystemConfig `json:"plugins,omitempty"`
 }
 
+// GoPluginEntry configures a compile-time registered Go plugin.
+type GoPluginEntry struct {
+	Name   string                 `json:"name"`
+	Config map[string]interface{} `json:"config,omitempty"`
+}
+
 // PluginSystemConfig contains plugin system settings
 type PluginSystemConfig struct {
-	Enabled               bool   `json:"enabled"`
-	PluginsDir            string `json:"plugins_dir"`
-	DefaultTimeoutSeconds int    `json:"default_timeout_seconds,omitempty"`
-	ValidateOnStartup     bool   `json:"validate_on_startup,omitempty"`
+	Enabled               bool            `json:"enabled"`
+	PluginsDir            string          `json:"plugins_dir"`
+	DefaultTimeoutSeconds int             `json:"default_timeout_seconds,omitempty"`
+	ValidateOnStartup     bool            `json:"validate_on_startup,omitempty"`
+	GoPlugins             []GoPluginEntry `json:"go_plugins,omitempty"`
 }
 
 // ShipperConfig contains remote endpoint settings
