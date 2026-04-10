@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -40,6 +41,7 @@ type PluginConfig struct {
 // PluginCollector implements Collector interface for external plugins
 type PluginCollector struct {
 	config            PluginConfig
+	mu                sync.Mutex
 	lastExecutionTime time.Time // Track last execution for interval-based scheduling
 }
 
@@ -96,12 +98,14 @@ func (c *PluginCollector) Validate(ctx context.Context) error {
 // Collect executes the plugin and parses its JSON output
 // If an interval is configured, it only executes when enough time has passed
 func (c *PluginCollector) Collect(ctx context.Context) ([]Metric, error) {
+	c.mu.Lock()
 	// Check if interval-based scheduling applies
 	if c.config.Interval > 0 && !c.lastExecutionTime.IsZero() {
 		elapsed := time.Since(c.lastExecutionTime)
 		intervalDuration := time.Duration(c.config.Interval) * time.Second
 
 		if elapsed < intervalDuration {
+			c.mu.Unlock()
 			log.Debug().
 				Str("plugin", c.config.Name).
 				Dur("elapsed", elapsed).
@@ -110,15 +114,18 @@ func (c *PluginCollector) Collect(ctx context.Context) ([]Metric, error) {
 			return []Metric{}, nil // Return empty to reduce traffic
 		}
 	}
+	c.mu.Unlock()
 
-	// Execute the plugin
+	// Execute the plugin (outside lock — execution can be slow)
 	metrics, err := c.collect(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update last execution time on success
+	c.mu.Lock()
 	c.lastExecutionTime = time.Now()
+	c.mu.Unlock()
 
 	return metrics, nil
 }

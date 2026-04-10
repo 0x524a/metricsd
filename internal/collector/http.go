@@ -103,15 +103,36 @@ func isPrometheusFormat(body []byte) bool {
 	if len(trimmed) == 0 {
 		return false
 	}
-	// Prometheus format starts with # (comment/HELP/TYPE) or a metric name (letter/underscore)
-	firstChar := trimmed[0]
-	if firstChar == '#' {
+	// JSON always starts with { or [
+	if trimmed[0] == '{' || trimmed[0] == '[' {
+		return false
+	}
+	// Prometheus format: # comment/HELP/TYPE lines
+	if trimmed[0] == '#' {
 		return true
 	}
-	// Check if it looks like a metric line (starts with letter or underscore, contains space)
-	if (firstChar >= 'a' && firstChar <= 'z') || (firstChar >= 'A' && firstChar <= 'Z') || firstChar == '_' {
-		// Not JSON if it doesn't start with { or [
-		return true
+	// Check the first non-comment line for Prometheus metric pattern:
+	// metric_name[{labels}] <numeric_value> [timestamp]
+	scanner := bufio.NewScanner(bytes.NewReader(trimmed))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Extract the value part (after metric name and optional labels)
+		valueStr := line
+		if idx := strings.Index(line, "}"); idx != -1 {
+			valueStr = strings.TrimSpace(line[idx+1:])
+		} else {
+			parts := strings.Fields(line)
+			if len(parts) < 2 {
+				return false
+			}
+			valueStr = parts[1]
+		}
+		// Must parse as a float to be a valid Prometheus metric line
+		_, err := strconv.ParseFloat(strings.Fields(valueStr)[0], 64)
+		return err == nil
 	}
 	return false
 }
