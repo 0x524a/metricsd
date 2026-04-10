@@ -240,7 +240,7 @@ cp config.example.json config.json
 | `collector.enable_disk` | Enable disk metrics collection | `true` |
 | `collector.enable_network` | Enable network metrics collection | `true` |
 | `collector.enable_gpu` | Enable GPU metrics collection (requires NVIDIA GPU) | `false` |
-| `shipper.type` | Shipper type: `prometheus_remote_write` or `http_json` | - |
+| `shipper.type` | Shipper type: `prometheus_remote_write`, `http_json`, or `json_file` | - |
 | `shipper.endpoint` | Remote endpoint URL | - |
 | `shipper.timeout` | Request timeout in nanoseconds | `30000000000` (30s) |
 | `shipper.tls.enabled` | Enable TLS/SSL | `false` |
@@ -273,6 +273,9 @@ You can override configuration values using environment variables:
 | `MC_TLS_SERVER_NAME` | SNI server name | `collector.example.com` |
 | `MC_TLS_MIN_VERSION` | Minimum TLS version | `TLS1.2` |
 | `MC_TLS_INSECURE_SKIP_VERIFY` | Skip certificate verification | `false` |
+| `MC_FILE_PATH` | File shipper output path | `/var/log/metricsd/metrics.json` |
+| `MC_FILE_MAX_SIZE_MB` | Maximum file size before rotation (MB) | `100` |
+| `MC_FILE_MAX_FILES` | Number of rotated files to keep | `5` |
 
 ## Usage
 
@@ -357,6 +360,34 @@ Payload format:
   ]
 }
 ```
+
+### JSON File (File Shipper)
+
+Ships metrics as JSON to a local file with automatic rotation. Ideal for Splunk Universal Forwarder integration or local storage.
+
+```json
+{
+  "shipper": {
+    "type": "json_file",
+    "file": {
+      "path": "/var/log/metricsd/metrics.json",
+      "max_size_mb": 100,
+      "max_files": 5
+    }
+  }
+}
+```
+
+**Configuration Options:**
+- `path`: Output file path (required)
+- `max_size_mb`: Maximum file size before rotation in MB (default: 100)
+- `max_files`: Number of rotated files to keep (default: 5)
+
+**Use Cases:**
+- Integration with Splunk Universal Forwarder
+- Local metric storage and backup
+- Offline metric collection
+- Log aggregation pipelines
 
 ## TLS Configuration
 

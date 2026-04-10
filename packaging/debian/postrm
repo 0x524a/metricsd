@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        # Remove user and group
+        if getent passwd metricsd >/dev/null; then
+            deluser --system metricsd || true
+        fi
+        if getent group metricsd >/dev/null; then
+            delgroup --system metricsd || true
+        fi
+
+        # Remove runtime data
+        rm -rf /var/lib/metricsd
+
+        # Remove configs if user wants
+        if [ -d /etc/metricsd ]; then
+            echo "Config files remain in /etc/metricsd (remove manually if needed)"
+        fi
+        ;;
+    remove)
+        # On remove, just cleanup systemd
+        systemctl daemon-reload || true
+        ;;
+esac
+
+exit 0
