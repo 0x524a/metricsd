@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"time"
@@ -114,6 +115,7 @@ func (s *HTTPJSONShipper) Ship(ctx context.Context, metrics []collector.Metric) 
 
 	log.Info().
 		Int("metric_count", len(metrics)).
+		Int("payload_size_bytes", len(data)).
 		Str("endpoint", s.endpoint).
 		Msg("Successfully shipped metrics via HTTP JSON")
 
@@ -124,6 +126,15 @@ func (s *HTTPJSONShipper) convertToPayload(metrics []collector.Metric) MetricPay
 	metricData := make([]MetricData, 0, len(metrics))
 
 	for _, metric := range metrics {
+		// Skip metrics with NaN or Inf values as they cannot be marshaled to JSON
+		if math.IsNaN(metric.Value) || math.IsInf(metric.Value, 0) {
+			log.Warn().
+				Str("metric_name", metric.Name).
+				Float64("value", metric.Value).
+				Msg("Skipping metric with invalid value (NaN or Inf)")
+			continue
+		}
+
 		metricData = append(metricData, MetricData{
 			Name:   metric.Name,
 			Value:  metric.Value,

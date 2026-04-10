@@ -7,6 +7,8 @@ import (
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 )
@@ -37,6 +39,12 @@ func (c *SystemCollector) Name() string {
 // Collect gathers system metrics
 func (c *SystemCollector) Collect(ctx context.Context) ([]Metric, error) {
 	metrics := make([]Metric, 0)
+
+	// Always collect uptime and load average
+	hostMetrics, err := c.collectHost(ctx)
+	if err == nil {
+		metrics = append(metrics, hostMetrics...)
+	}
 
 	if c.enableCPU {
 		cpuMetrics, err := c.collectCPU(ctx)
@@ -133,6 +141,12 @@ func (c *SystemCollector) collectMemory(ctx context.Context) ([]Metric, error) {
 			Name:   "system_memory_used_bytes",
 			Labels: map[string]string{},
 			Value:  float64(vmStat.Used),
+			Type:   "gauge",
+		},
+		Metric{
+			Name:   "system_memory_free_bytes",
+			Labels: map[string]string{},
+			Value:  float64(vmStat.Free),
 			Type:   "gauge",
 		},
 		Metric{
@@ -323,6 +337,84 @@ func (c *SystemCollector) collectNetwork(ctx context.Context) ([]Metric, error) 
 				Labels: labels,
 				Value:  float64(stats.Dropout),
 				Type:   "counter",
+			},
+		)
+	}
+
+	return metrics, nil
+}
+
+func (c *SystemCollector) collectHost(ctx context.Context) ([]Metric, error) {
+	metrics := make([]Metric, 0)
+
+	// Uptime
+	uptime, err := host.UptimeWithContext(ctx)
+	if err == nil {
+		metrics = append(metrics, Metric{
+			Name:   "system_uptime_seconds",
+			Labels: map[string]string{},
+			Value:  float64(uptime),
+			Type:   "counter",
+		})
+	}
+
+	// Boot time (Unix timestamp)
+	bootTime, err := host.BootTimeWithContext(ctx)
+	if err == nil {
+		metrics = append(metrics, Metric{
+			Name:   "system_boot_time_seconds",
+			Labels: map[string]string{},
+			Value:  float64(bootTime),
+			Type:   "gauge",
+		})
+	}
+
+	// Load average (1, 5, 15 minutes)
+	loadAvg, err := load.AvgWithContext(ctx)
+	if err == nil {
+		metrics = append(metrics,
+			Metric{
+				Name:   "system_load_1",
+				Labels: map[string]string{},
+				Value:  loadAvg.Load1,
+				Type:   "gauge",
+			},
+			Metric{
+				Name:   "system_load_5",
+				Labels: map[string]string{},
+				Value:  loadAvg.Load5,
+				Type:   "gauge",
+			},
+			Metric{
+				Name:   "system_load_15",
+				Labels: map[string]string{},
+				Value:  loadAvg.Load15,
+				Type:   "gauge",
+			},
+		)
+	}
+
+	// Process counts
+	misc, err := load.MiscWithContext(ctx)
+	if err == nil {
+		metrics = append(metrics,
+			Metric{
+				Name:   "system_procs_running",
+				Labels: map[string]string{},
+				Value:  float64(misc.ProcsRunning),
+				Type:   "gauge",
+			},
+			Metric{
+				Name:   "system_procs_blocked",
+				Labels: map[string]string{},
+				Value:  float64(misc.ProcsBlocked),
+				Type:   "gauge",
+			},
+			Metric{
+				Name:   "system_procs_total",
+				Labels: map[string]string{},
+				Value:  float64(misc.ProcsTotal),
+				Type:   "gauge",
 			},
 		)
 	}

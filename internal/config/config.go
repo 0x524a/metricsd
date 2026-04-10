@@ -24,20 +24,42 @@ type ServerConfig struct {
 
 // CollectorConfig contains metrics collection settings
 type CollectorConfig struct {
-	IntervalSeconds int  `json:"interval_seconds"`
-	EnableCPU       bool `json:"enable_cpu"`
-	EnableMemory    bool `json:"enable_memory"`
-	EnableDisk      bool `json:"enable_disk"`
-	EnableNetwork   bool `json:"enable_network"`
-	EnableGPU       bool `json:"enable_gpu"`
+	IntervalSeconds int                `json:"interval_seconds"`
+	EnableCPU       bool               `json:"enable_cpu"`
+	EnableMemory    bool               `json:"enable_memory"`
+	EnableDisk      bool               `json:"enable_disk"`
+	EnableNetwork   bool               `json:"enable_network"`
+	EnableGPU       bool               `json:"enable_gpu"`
+	Plugins         PluginSystemConfig `json:"plugins,omitempty"`
+}
+
+// PluginSystemConfig contains plugin system settings
+type PluginSystemConfig struct {
+	Enabled               bool   `json:"enabled"`
+	PluginsDir            string `json:"plugins_dir"`
+	DefaultTimeoutSeconds int    `json:"default_timeout_seconds,omitempty"`
+	ValidateOnStartup     bool   `json:"validate_on_startup,omitempty"`
 }
 
 // ShipperConfig contains remote endpoint settings
 type ShipperConfig struct {
-	Type     string        `json:"type"` // "prometheus_remote_write" or "http_json"
+	Type     string        `json:"type"` // "prometheus_remote_write", "http_json", "json_file", or "splunk_hec"
 	Endpoint string        `json:"endpoint"`
 	TLS      TLSConfig     `json:"tls"`
 	Timeout  time.Duration `json:"timeout"`
+	// File shipper specific settings
+	File FileShipperConfig `json:"file,omitempty"`
+	// Splunk HEC specific settings
+	HECToken     string `json:"hec_token,omitempty"`
+	DebugLogFile string `json:"debug_log_file,omitempty"` // Optional file path to log payloads for debugging
+}
+
+// FileShipperConfig contains file shipper settings for Splunk Universal Forwarder integration
+type FileShipperConfig struct {
+	Path      string `json:"path"`        // Path to the output file
+	MaxSizeMB int    `json:"max_size_mb"` // Max file size before rotation (default: 100MB)
+	MaxFiles  int    `json:"max_files"`   // Number of rotated files to keep (default: 5)
+	Format    string `json:"format"`      // Output format: "single" (one metric per line) or "multi" (Splunk multi-metric)
 }
 
 // TLSConfig contains TLS settings
@@ -114,6 +136,46 @@ func applyEnvOverrides(cfg *Config) {
 	if val := os.Getenv("MC_TLS_CA_FILE"); val != "" {
 		cfg.Shipper.TLS.CAFile = val
 	}
+	// Splunk HEC token environment variable override
+	if val := os.Getenv("MC_HEC_TOKEN"); val != "" {
+		cfg.Shipper.HECToken = val
+	}
+	// Plugin configuration environment variable overrides
+	if val := os.Getenv("MC_PLUGINS_ENABLED"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			cfg.Collector.Plugins.Enabled = enabled
+		}
+	}
+	if val := os.Getenv("MC_PLUGINS_DIR"); val != "" {
+		cfg.Collector.Plugins.PluginsDir = val
+	}
+	if val := os.Getenv("MC_PLUGINS_DEFAULT_TIMEOUT"); val != "" {
+		if timeout, err := strconv.Atoi(val); err == nil {
+			cfg.Collector.Plugins.DefaultTimeoutSeconds = timeout
+		}
+	}
+	if val := os.Getenv("MC_PLUGINS_VALIDATE"); val != "" {
+		if validate, err := strconv.ParseBool(val); err == nil {
+			cfg.Collector.Plugins.ValidateOnStartup = validate
+		}
+	}
+	// File shipper environment variable overrides
+	if val := os.Getenv("MC_FILE_PATH"); val != "" {
+		cfg.Shipper.File.Path = val
+	}
+	if val := os.Getenv("MC_FILE_MAX_SIZE_MB"); val != "" {
+		if size, err := strconv.Atoi(val); err == nil {
+			cfg.Shipper.File.MaxSizeMB = size
+		}
+	}
+	if val := os.Getenv("MC_FILE_MAX_FILES"); val != "" {
+		if count, err := strconv.Atoi(val); err == nil {
+			cfg.Shipper.File.MaxFiles = count
+		}
+	}
+	if val := os.Getenv("MC_FILE_FORMAT"); val != "" {
+		cfg.Shipper.File.Format = val
+	}
 }
 
 // Validate checks if the configuration is valid
@@ -126,17 +188,42 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("collector interval must be positive")
 	}
 
-	if c.Shipper.Type != "prometheus_remote_write" && c.Shipper.Type != "http_json" {
-		return fmt.Errorf("invalid shipper type: %s (must be 'prometheus_remote_write' or 'http_json')", c.Shipper.Type)
+	if c.Shipper.Type != "prometheus_remote_write" && c.Shipper.Type != "http_json" && c.Shipper.Type != "json_file" && c.Shipper.Type != "splunk_hec" {
+		return fmt.Errorf("invalid shipper type: %s (must be 'prometheus_remote_write', 'http_json', 'json_file', or 'splunk_hec')", c.Shipper.Type)
 	}
 
-	if c.Shipper.Endpoint == "" {
-		return fmt.Errorf("shipper endpoint is required")
+	// Validate based on shipper type
+	if c.Shipper.Type == "json_file" {
+		if c.Shipper.File.Path == "" {
+			return fmt.Errorf("file shipper requires a file path")
+		}
+		// Validate format (default to "single" if not specified)
+		if c.Shipper.File.Format != "" && c.Shipper.File.Format != "single" && c.Shipper.File.Format != "multi" {
+			return fmt.Errorf("invalid file format: %s (must be 'single' or 'multi')", c.Shipper.File.Format)
+		}
+	} else {
+		if c.Shipper.Endpoint == "" {
+			return fmt.Errorf("shipper endpoint is required")
+		}
+		// Validate Splunk HEC token
+		if c.Shipper.Type == "splunk_hec" && c.Shipper.HECToken == "" {
+			return fmt.Errorf("splunk_hec shipper requires a HEC token")
+		}
 	}
 
 	if c.Shipper.TLS.Enabled {
 		if c.Shipper.TLS.CertFile == "" || c.Shipper.TLS.KeyFile == "" {
 			return fmt.Errorf("TLS cert and key files are required when TLS is enabled")
+		}
+	}
+
+	// Apply plugin configuration defaults
+	if c.Collector.Plugins.Enabled {
+		if c.Collector.Plugins.PluginsDir == "" {
+			c.Collector.Plugins.PluginsDir = "plugins"
+		}
+		if c.Collector.Plugins.DefaultTimeoutSeconds <= 0 {
+			c.Collector.Plugins.DefaultTimeoutSeconds = 30
 		}
 	}
 
