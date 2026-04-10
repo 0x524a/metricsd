@@ -1,0 +1,387 @@
+#!/bin/bash
+# nvidia-smi metrics plugin for metricsd
+# Collects comprehensive NVIDIA GPU metrics by parsing nvidia-smi output
+#
+# Metrics collected:
+# - nvidia_smi_available: Whether nvidia-smi is installed (0/1)
+# - gpu_count: Number of GPUs detected
+# - gpu_info: GPU metadata (driver version, CUDA version, name, UUID)
+# - gpu_utilization_percent: GPU compute utilization
+# - gpu_memory_utilization_percent: GPU memory controller utilization
+# - gpu_memory_total_bytes: Total GPU memory
+# - gpu_memory_used_bytes: Used GPU memory
+# - gpu_memory_free_bytes: Free GPU memory
+# - gpu_temperature_celsius: GPU temperature
+# - gpu_power_draw_watts: Current power draw
+# - gpu_power_limit_watts: Power limit
+# - gpu_fan_speed_percent: Fan speed percentage
+# - gpu_clock_graphics_mhz: Graphics clock speed
+# - gpu_clock_memory_mhz: Memory clock speed
+# - gpu_clock_sm_mhz: SM clock speed
+# - gpu_pcie_tx_bytes: PCIe TX throughput
+# - gpu_pcie_rx_bytes: PCIe RX throughput
+# - gpu_ecc_errors_corrected: Corrected ECC errors (counter)
+# - gpu_ecc_errors_uncorrected: Uncorrected ECC errors (counter)
+# - gpu_process_count: Number of processes using the GPU
+# - gpu_process_memory_bytes: Memory used by processes (per process)
+#
+# Process metrics include labels:
+# - gpu_uuid: GPU UUID
+# - gpu_index: GPU index (0, 1, etc.)
+# - pid: Process ID
+# - process_name: Process command name
+# - process_type: Process type (C=Compute, G=Graphics, C+G=Both)
+#
+# Output format: JSON array of metrics following the plugin schema
+
+set -e
+
+# Start JSON array
+echo "["
+
+first=true
+
+# Function to output a metric
+output_metric() {
+    local name="$1"
+    local value="$2"
+    local type="${3:-gauge}"
+    local labels="$4"
+
+    # Skip if value is empty, N/A, or [Not Supported]
+    if [ -z "$value" ] || [ "$value" = "N/A" ] || [[ "$value" == *"Not Supported"* ]]; then
+        return
+    fi
+
+    if [ "$first" = true ]; then
+        first=false
+    else
+        echo ","
+    fi
+
+    if [ -n "$labels" ]; then
+        echo "  {\"name\": \"$name\", \"value\": $value, \"type\": \"$type\", \"labels\": {$labels}}"
+    else
+        echo "  {\"name\": \"$name\", \"value\": $value, \"type\": \"$type\"}"
+    fi
+}
+
+# Function to escape string for JSON
+json_escape() {
+    echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+}
+
+# Function to convert MiB to bytes
+mib_to_bytes() {
+    local mib="$1"
+    if [ -z "$mib" ] || [ "$mib" = "N/A" ]; then
+        echo ""
+        return
+    fi
+    # Remove " MiB" suffix and convert (handles both "88 MiB" and "88MiB")
+    local num=$(echo "$mib" | sed 's/ *MiB//g; s/[^0-9.]//g')
+    if [ -n "$num" ]; then
+        # Use bash arithmetic instead of bc for better portability
+        # Handle decimal by truncating (MiB should be whole numbers anyway)
+        num=${num%.*}  # Remove decimal part if present
+        echo "$((num * 1048576))"
+    fi
+}
+
+# Function to extract numeric value
+extract_number() {
+    local val="$1"
+    if [ -z "$val" ] || [ "$val" = "N/A" ] || [[ "$val" == *"Not Supported"* ]]; then
+        echo ""
+        return
+    fi
+    echo "$val" | sed 's/[^0-9.]//g'
+}
+
+# Check if nvidia-smi is available
+if ! command -v nvidia-smi &> /dev/null; then
+    output_metric "nvidia_smi_available" 0 "gauge" ""
+    echo ""
+    echo "]"
+    exit 0
+fi
+
+# nvidia-smi is available
+output_metric "nvidia_smi_available" 1 "gauge" ""
+
+# Get driver version
+driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+
+# Get CUDA version from nvidia-smi output (not from --query-gpu as it's not a valid field)
+# The CUDA version is shown in the header of nvidia-smi output
+cuda_version=$(nvidia-smi 2>/dev/null | grep "CUDA Version:" | sed 's/.*CUDA Version: \([0-9.]*\).*/\1/' | head -1)
+if [ -z "$cuda_version" ]; then
+    cuda_version="N/A"
+fi
+
+# Get GPU count
+gpu_count=$(nvidia-smi --query-gpu=count --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+if [ -z "$gpu_count" ]; then
+    gpu_count=$(nvidia-smi -L 2>/dev/null | wc -l | tr -d ' ')
+fi
+
+output_metric "gpu_count" "${gpu_count:-0}" "gauge" ""
+
+# Query all GPU metrics in one call using CSV format
+# This is more efficient than multiple nvidia-smi calls
+gpu_data=$(nvidia-smi --query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,clocks.current.sm,pcie.link.gen.current,pcie.link.width.current,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total --format=csv,noheader 2>/dev/null)
+
+if [ -z "$gpu_data" ]; then
+    echo ""
+    echo "]"
+    exit 0
+fi
+
+# Process each GPU
+while IFS= read -r line; do
+    if [ -z "$line" ]; then
+        continue
+    fi
+
+    # Parse CSV fields (comma-separated with possible spaces)
+    idx=$(echo "$line" | cut -d',' -f1 | tr -d ' ')
+    uuid=$(echo "$line" | cut -d',' -f2 | tr -d ' ')
+    name=$(echo "$line" | cut -d',' -f3 | sed 's/^ *//;s/ *$//')
+    temp=$(echo "$line" | cut -d',' -f4 | tr -d ' ')
+    util_gpu=$(echo "$line" | cut -d',' -f5 | tr -d ' %')
+    util_mem=$(echo "$line" | cut -d',' -f6 | tr -d ' %')
+    mem_total=$(echo "$line" | cut -d',' -f7 | tr -d ' ')
+    mem_used=$(echo "$line" | cut -d',' -f8 | tr -d ' ')
+    mem_free=$(echo "$line" | cut -d',' -f9 | tr -d ' ')
+    power_draw=$(echo "$line" | cut -d',' -f10 | tr -d ' ')
+    power_limit=$(echo "$line" | cut -d',' -f11 | tr -d ' ')
+    fan=$(echo "$line" | cut -d',' -f12 | tr -d ' %')
+    clock_graphics=$(echo "$line" | cut -d',' -f13 | tr -d ' ')
+    clock_memory=$(echo "$line" | cut -d',' -f14 | tr -d ' ')
+    clock_sm=$(echo "$line" | cut -d',' -f15 | tr -d ' ')
+    pcie_gen=$(echo "$line" | cut -d',' -f16 | tr -d ' ')
+    pcie_width=$(echo "$line" | cut -d',' -f17 | tr -d ' ')
+    ecc_corrected=$(echo "$line" | cut -d',' -f18 | tr -d ' ')
+    ecc_uncorrected=$(echo "$line" | cut -d',' -f19 | tr -d ' ')
+
+    # Escape for JSON
+    safe_name=$(json_escape "$name")
+    safe_uuid=$(json_escape "$uuid")
+    safe_driver=$(json_escape "$driver_version")
+    safe_cuda=$(json_escape "$cuda_version")
+
+    # Base labels for this GPU
+    labels="\"gpu_index\": \"$idx\", \"gpu_uuid\": \"$safe_uuid\", \"gpu_name\": \"$safe_name\""
+
+    # GPU info metric (with driver/CUDA version)
+    info_labels="$labels, \"driver_version\": \"$safe_driver\", \"cuda_version\": \"$safe_cuda\""
+    output_metric "gpu_info" 1 "gauge" "$info_labels"
+
+    # Temperature
+    temp_val=$(extract_number "$temp")
+    output_metric "gpu_temperature_celsius" "$temp_val" "gauge" "$labels"
+
+    # Utilization
+    util_gpu_val=$(extract_number "$util_gpu")
+    output_metric "gpu_utilization_percent" "$util_gpu_val" "gauge" "$labels"
+
+    util_mem_val=$(extract_number "$util_mem")
+    output_metric "gpu_memory_utilization_percent" "$util_mem_val" "gauge" "$labels"
+
+    # Memory (convert MiB to bytes)
+    mem_total_bytes=$(mib_to_bytes "$mem_total")
+    output_metric "gpu_memory_total_bytes" "$mem_total_bytes" "gauge" "$labels"
+
+    mem_used_bytes=$(mib_to_bytes "$mem_used")
+    output_metric "gpu_memory_used_bytes" "$mem_used_bytes" "gauge" "$labels"
+
+    mem_free_bytes=$(mib_to_bytes "$mem_free")
+    output_metric "gpu_memory_free_bytes" "$mem_free_bytes" "gauge" "$labels"
+
+    # Power (remove "W" suffix)
+    power_draw_val=$(extract_number "$power_draw")
+    output_metric "gpu_power_draw_watts" "$power_draw_val" "gauge" "$labels"
+
+    power_limit_val=$(extract_number "$power_limit")
+    output_metric "gpu_power_limit_watts" "$power_limit_val" "gauge" "$labels"
+
+    # Fan speed
+    fan_val=$(extract_number "$fan")
+    output_metric "gpu_fan_speed_percent" "$fan_val" "gauge" "$labels"
+
+    # Clocks (remove "MHz" suffix)
+    clock_graphics_val=$(extract_number "$clock_graphics")
+    output_metric "gpu_clock_graphics_mhz" "$clock_graphics_val" "gauge" "$labels"
+
+    clock_memory_val=$(extract_number "$clock_memory")
+    output_metric "gpu_clock_memory_mhz" "$clock_memory_val" "gauge" "$labels"
+
+    clock_sm_val=$(extract_number "$clock_sm")
+    output_metric "gpu_clock_sm_mhz" "$clock_sm_val" "gauge" "$labels"
+
+    # PCIe info
+    pcie_gen_val=$(extract_number "$pcie_gen")
+    output_metric "gpu_pcie_generation" "$pcie_gen_val" "gauge" "$labels"
+
+    pcie_width_val=$(extract_number "$pcie_width")
+    output_metric "gpu_pcie_link_width" "$pcie_width_val" "gauge" "$labels"
+
+    # ECC errors (counters)
+    ecc_corrected_val=$(extract_number "$ecc_corrected")
+    output_metric "gpu_ecc_errors_corrected" "$ecc_corrected_val" "counter" "$labels"
+
+    ecc_uncorrected_val=$(extract_number "$ecc_uncorrected")
+    output_metric "gpu_ecc_errors_uncorrected" "$ecc_uncorrected_val" "counter" "$labels"
+
+done <<< "$gpu_data"
+
+# Get GPU process information
+# We'll try multiple methods to capture all GPU processes with their memory usage
+
+# Method 1: Try nvidia-smi pmon (process monitor - shows all processes including graphics)
+# pmon output format: # gpu pid type sm mem enc dec command
+pmon_data=$(nvidia-smi pmon -c 1 2>/dev/null || true)
+
+# Method 2: Try querying all processes via --query-compute-apps (backup for compute processes only)
+compute_apps_data=$(nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true)
+
+# Declare associative arrays
+declare -A gpu_process_count 2>/dev/null || true
+declare -A seen_processes 2>/dev/null || true
+
+# Process pmon data first (preferred - captures all process types)
+if [ -n "$pmon_data" ]; then
+    # Parse pmon output (skip header lines starting with #)
+    while IFS= read -r line; do
+        # Skip empty lines and header lines
+        if [ -z "$line" ] || [[ "$line" == \#* ]]; then
+            continue
+        fi
+
+        # Parse pmon columns: gpu pid type sm mem enc dec command
+        # Example: "  0  1234    C   12  345   -   -   python"
+        gpu_idx=$(echo "$line" | awk '{print $1}')
+        proc_pid=$(echo "$line" | awk '{print $2}')
+        proc_type=$(echo "$line" | awk '{print $3}')
+        proc_mem=$(echo "$line" | awk '{print $5}')  # Memory in MiB
+        proc_name=$(echo "$line" | awk '{print $8}')
+
+        # Skip if essential fields are missing or dash
+        if [ -z "$gpu_idx" ] || [ "$gpu_idx" = "-" ] || [ -z "$proc_pid" ] || [ "$proc_pid" = "-" ]; then
+            continue
+        fi
+
+        # Get GPU UUID for this index from earlier data
+        gpu_uuid=""
+        while IFS= read -r gpu_line; do
+            if [ -z "$gpu_line" ]; then
+                continue
+            fi
+            idx=$(echo "$gpu_line" | cut -d',' -f1 | tr -d ' ')
+            if [ "$idx" = "$gpu_idx" ]; then
+                gpu_uuid=$(echo "$gpu_line" | cut -d',' -f2 | tr -d ' ')
+                break
+            fi
+        done <<< "$gpu_data"
+
+        # Skip if we couldn't find UUID
+        if [ -z "$gpu_uuid" ]; then
+            continue
+        fi
+
+        # Escape for JSON
+        safe_proc_name=$(json_escape "$proc_name")
+        safe_gpu_uuid=$(json_escape "$gpu_uuid")
+        safe_proc_type=$(json_escape "$proc_type")
+
+        # Process memory usage (convert MiB to bytes if not dash)
+        if [ -n "$proc_mem" ] && [ "$proc_mem" != "-" ]; then
+            # Remove any non-numeric characters and convert using bash arithmetic
+            proc_mem_clean=$(echo "$proc_mem" | sed 's/[^0-9.]//g')
+            proc_mem_clean=${proc_mem_clean%.*}  # Remove decimal if present
+
+            if [ -n "$proc_mem_clean" ] && [ "$proc_mem_clean" -gt 0 ] 2>/dev/null; then
+                proc_mem_bytes=$((proc_mem_clean * 1048576))
+
+                # Mark this process as seen and count it
+                seen_processes["${gpu_uuid}_${proc_pid}"]=1
+
+                # Increment process count for this GPU
+                if [ -n "${gpu_process_count[$gpu_uuid]}" ]; then
+                    gpu_process_count[$gpu_uuid]=$((gpu_process_count[$gpu_uuid] + 1))
+                else
+                    gpu_process_count[$gpu_uuid]=1
+                fi
+
+                proc_labels="\"gpu_uuid\": \"$safe_gpu_uuid\", \"gpu_index\": \"$gpu_idx\", \"pid\": \"$proc_pid\", \"process_name\": \"$safe_proc_name\", \"process_type\": \"$safe_proc_type\""
+                output_metric "gpu_process_memory_bytes" "$proc_mem_bytes" "gauge" "$proc_labels"
+            fi
+        fi
+
+    done <<< "$pmon_data"
+fi
+
+# Fallback: Process compute apps data (in case pmon didn't work or missed some processes)
+if [ -n "$compute_apps_data" ]; then
+    while IFS= read -r line; do
+        if [ -z "$line" ]; then
+            continue
+        fi
+
+        proc_uuid=$(echo "$line" | cut -d',' -f1 | tr -d ' ')
+        proc_pid=$(echo "$line" | cut -d',' -f2 | tr -d ' ')
+        proc_name=$(echo "$line" | cut -d',' -f3 | sed 's/^ *//;s/ *$//')
+        proc_mem=$(echo "$line" | cut -d',' -f4 | tr -d ' ')
+
+        # Skip if we already processed this via pmon (with memory data)
+        if [ -n "${seen_processes[${proc_uuid}_${proc_pid}]}" ]; then
+            continue
+        fi
+
+        # Escape for JSON
+        safe_proc_name=$(json_escape "$proc_name")
+        safe_proc_uuid=$(json_escape "$proc_uuid")
+
+        # Process memory usage
+        proc_mem_bytes=$(mib_to_bytes "$proc_mem")
+        if [ -n "$proc_mem_bytes" ] && [ "$proc_mem_bytes" != "0" ]; then
+            # Get GPU index for this UUID
+            gpu_idx=""
+            while IFS= read -r gpu_line; do
+                if [ -z "$gpu_line" ]; then
+                    continue
+                fi
+                uuid=$(echo "$gpu_line" | cut -d',' -f2 | tr -d ' ')
+                if [ "$uuid" = "$proc_uuid" ]; then
+                    gpu_idx=$(echo "$gpu_line" | cut -d',' -f1 | tr -d ' ')
+                    break
+                fi
+            done <<< "$gpu_data"
+
+            # Mark as seen and count it
+            seen_processes["${proc_uuid}_${proc_pid}"]=1
+
+            # Increment process count for this GPU
+            if [ -n "${gpu_process_count[$proc_uuid]}" ]; then
+                gpu_process_count[$proc_uuid]=$((gpu_process_count[$proc_uuid] + 1))
+            else
+                gpu_process_count[$proc_uuid]=1
+            fi
+
+            proc_labels="\"gpu_uuid\": \"$safe_proc_uuid\", \"gpu_index\": \"$gpu_idx\", \"pid\": \"$proc_pid\", \"process_name\": \"$safe_proc_name\", \"process_type\": \"C\""
+            output_metric "gpu_process_memory_bytes" "$proc_mem_bytes" "gauge" "$proc_labels"
+        fi
+
+    done <<< "$compute_apps_data"
+fi
+
+# Output process count per GPU
+for uuid in "${!gpu_process_count[@]}"; do
+    count="${gpu_process_count[$uuid]}"
+    safe_uuid=$(json_escape "$uuid")
+    output_metric "gpu_process_count" "$count" "gauge" "\"gpu_uuid\": \"$safe_uuid\""
+done
+
+# Close JSON array
+echo ""
+echo "]"

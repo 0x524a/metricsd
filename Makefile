@@ -1,6 +1,8 @@
 BINARY_NAME=metricsd
 BUILD_DIR=bin
 CMD_DIR=cmd/metricsd
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.1.0")
+LDFLAGS := -w -s -X main.Version=$(VERSION)
 
 .PHONY: all build run clean test deps help
 
@@ -61,6 +63,35 @@ install:
 docker-build:
 	@echo "Building Docker image..."
 	docker build -t $(BINARY_NAME):latest .
+
+## build-linux-amd64: Build binary for Linux amd64
+build-linux-amd64:
+	@echo "Building for Linux amd64..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64"
+
+## build-linux-arm64: Build binary for Linux arm64
+build-linux-arm64:
+	@echo "Building for Linux arm64..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64"
+
+## build-all-linux: Build for all supported Linux architectures
+build-all-linux: build-linux-amd64 build-linux-arm64
+
+## package-deb: Build Debian packages for all architectures
+package-deb:
+	@bash packaging/scripts/build-deb.sh
+
+## package-deb-amd64: Build Debian package for amd64 only
+package-deb-amd64:
+	@ARCHS=amd64 bash packaging/scripts/build-deb.sh
+
+## package-deb-arm64: Build Debian package for arm64 only
+package-deb-arm64:
+	@ARCHS=arm64 bash packaging/scripts/build-deb.sh
 
 ## help: Display this help message
 help:

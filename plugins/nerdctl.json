@@ -1,0 +1,5 @@
+{
+  "name": "nerdctl",
+  "timeout": 60000000000,
+  "enabled": true
+}

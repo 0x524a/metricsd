@@ -1,0 +1,10 @@
+{
+  "name": "process_monitor",
+  "timeout": 30000000000,
+  "enabled": true,
+  "processes": [
+    "systemd",
+    "sshd",
+    "bash"
+  ]
+}
