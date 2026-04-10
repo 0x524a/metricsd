@@ -1,3 +1,6 @@
+//go:build nvidia
+// +build nvidia
+
 package collector
 
 import (

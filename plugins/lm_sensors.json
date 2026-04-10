@@ -1,0 +1,5 @@
+{
+  "name": "lm_sensors",
+  "timeout": 10,
+  "enabled": true
+}

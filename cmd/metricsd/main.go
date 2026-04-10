@@ -172,6 +172,31 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 		log.Info().Int("endpoint_count", len(endpoints)).Msg("HTTP collector registered")
 	}
 
+	// Register plugin collectors
+	if cfg.Collector.Plugins.Enabled {
+		pluginCfg := collector.PluginDiscoveryConfig{
+			PluginsDir:        cfg.Collector.Plugins.PluginsDir,
+			Enabled:           true,
+			DefaultTimeout:    time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second,
+			ValidateOnStartup: cfg.Collector.Plugins.ValidateOnStartup,
+		}
+
+		plugins, err := collector.DiscoverPlugins(pluginCfg)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to discover plugins")
+		} else {
+			for _, plugin := range plugins {
+				registry.Register(plugin)
+				log.Info().
+					Str("name", plugin.Name()).
+					Msg("Plugin collector registered")
+			}
+			if len(plugins) > 0 {
+				log.Info().Int("plugin_count", len(plugins)).Msg("Plugin collectors registered")
+			}
+		}
+	}
+
 	return registry
 }
 
@@ -220,6 +245,51 @@ func setupShipper(cfg *config.Config) shipper.Shipper {
 			Str("type", "http_json").
 			Str("endpoint", cfg.Shipper.Endpoint).
 			Msg("Shipper initialized")
+
+	case "json_file":
+		shpr, err = shipper.NewFileShipper(
+			cfg.Shipper.File.Path,
+			cfg.Shipper.File.MaxSizeMB,
+			cfg.Shipper.File.MaxFiles,
+			cfg.Shipper.File.Format,
+		)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to create file shipper")
+		}
+		format := cfg.Shipper.File.Format
+		if format == "" {
+			format = "single"
+		}
+		log.Info().
+			Str("type", "json_file").
+			Str("path", cfg.Shipper.File.Path).
+			Int("max_size_mb", cfg.Shipper.File.MaxSizeMB).
+			Int("max_files", cfg.Shipper.File.MaxFiles).
+			Str("format", format).
+			Msg("Shipper initialized")
+
+	case "splunk_hec":
+		shpr, err = shipper.NewSplunkHECShipper(
+			cfg.Shipper.Endpoint,
+			cfg.Shipper.HECToken,
+			cfg.Shipper.TLS.Enabled,
+			cfg.Shipper.TLS.CertFile,
+			cfg.Shipper.TLS.KeyFile,
+			cfg.Shipper.TLS.CAFile,
+			cfg.Shipper.TLS.InsecureSkipVerify,
+			timeout,
+			cfg.Shipper.DebugLogFile,
+		)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to create Splunk HEC shipper")
+		}
+		logEvent := log.Info().
+			Str("type", "splunk_hec").
+			Str("endpoint", cfg.Shipper.Endpoint)
+		if cfg.Shipper.DebugLogFile != "" {
+			logEvent = logEvent.Str("debug_log_file", cfg.Shipper.DebugLogFile)
+		}
+		logEvent.Msg("Shipper initialized")
 
 	default:
 		log.Fatal().Str("type", cfg.Shipper.Type).Msg("Unknown shipper type")
