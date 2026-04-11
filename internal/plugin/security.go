@@ -25,7 +25,11 @@ func ValidatePluginPath(pluginPath, pluginsDir string) (string, error) {
 		return "", fmt.Errorf("failed to eval plugins dir symlinks: %w", err)
 	}
 
-	resolvedPath, err := filepath.EvalSymlinks(pluginPath)
+	absPluginPath, err := filepath.Abs(pluginPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to make plugin path absolute %s: %w", pluginPath, err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(absPluginPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve plugin path %s: %w", pluginPath, err)
 	}
