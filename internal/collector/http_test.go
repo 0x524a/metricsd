@@ -357,7 +357,89 @@ func TestHTTPCollector_MultipleEndpoints(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 9. splitLabels — quoted values containing commas
+// 9. HTTPCollector.Name
+// ---------------------------------------------------------------------------
+
+func TestHTTPCollector_Name(t *testing.T) {
+	c := NewHTTPCollector(nil, 5*time.Second)
+	if c.Name() != "http" {
+		t.Errorf("expected Name() == \"http\", got %q", c.Name())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 10. parseMetrics — all type-switch branches
+// ---------------------------------------------------------------------------
+
+// TestParseMetrics_AllTypes exercises the int, int64, int32 and float32
+// branches of parseMetrics, which are not reached through the HTTP path
+// because JSON always deserialises numbers as float64.
+func TestParseMetrics_AllTypes(t *testing.T) {
+	col := NewHTTPCollector(nil, 5*time.Second)
+
+	rawMetrics := map[string]interface{}{
+		"int_val":     int(7),
+		"int64_val":   int64(8),
+		"int32_val":   int32(9),
+		"float32_val": float32(3.14),
+		"float64_val": float64(2.71),
+		"string_val":  "skip_me", // should be ignored
+	}
+
+	metrics := col.parseMetrics("test_ep", rawMetrics)
+
+	// 5 numeric keys → 5 metrics (the string should be skipped).
+	if len(metrics) != 5 {
+		t.Fatalf("expected 5 metrics, got %d", len(metrics))
+	}
+
+	find := func(name string) *Metric {
+		for i := range metrics {
+			if metrics[i].Name == "app_"+name {
+				return &metrics[i]
+			}
+		}
+		return nil
+	}
+
+	cases := []struct {
+		key  string
+		want float64
+	}{
+		{"int_val", 7},
+		{"int64_val", 8},
+		{"int32_val", 9},
+	}
+	for _, tc := range cases {
+		m := find(tc.key)
+		if m == nil {
+			t.Errorf("metric app_%s not found", tc.key)
+			continue
+		}
+		if m.Value != tc.want {
+			t.Errorf("app_%s: expected %v, got %v", tc.key, tc.want, m.Value)
+		}
+		if m.Labels["endpoint"] != "test_ep" {
+			t.Errorf("app_%s: expected endpoint label 'test_ep', got %q", tc.key, m.Labels["endpoint"])
+		}
+	}
+
+	// float32 loses some precision when converted; just check it's close.
+	f32m := find("float32_val")
+	if f32m == nil {
+		t.Error("metric app_float32_val not found")
+	} else if f32m.Value < 3.0 || f32m.Value > 4.0 {
+		t.Errorf("app_float32_val: unexpected value %v", f32m.Value)
+	}
+
+	// string key must NOT appear.
+	if find("string_val") != nil {
+		t.Error("app_string_val should have been skipped")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 11. splitLabels — quoted values containing commas
 // ---------------------------------------------------------------------------
 
 func TestSplitLabels(t *testing.T) {
@@ -407,4 +489,36 @@ func TestSplitLabels(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParsePrometheusLine_EdgeCases(t *testing.T) {
+	c := &HTTPCollector{}
+
+	t.Run("no value field", func(t *testing.T) {
+		result := c.parsePrometheusLine("test", "metric_name_only")
+		if result != nil {
+			t.Error("expected nil for line with no value")
+		}
+	})
+
+	t.Run("unparseable value", func(t *testing.T) {
+		result := c.parsePrometheusLine("test", "metric_name notanumber")
+		if result != nil {
+			t.Error("expected nil for non-numeric value")
+		}
+	})
+
+	t.Run("malformed labels no closing brace", func(t *testing.T) {
+		result := c.parsePrometheusLine("test", "metric{label=\"value\" 123")
+		if result != nil {
+			t.Error("expected nil for malformed labels")
+		}
+	})
+
+	t.Run("labels with no value after brace", func(t *testing.T) {
+		result := c.parsePrometheusLine("test", "metric{label=\"value\"}")
+		if result != nil {
+			t.Error("expected nil for labels with no value")
+		}
+	})
 }

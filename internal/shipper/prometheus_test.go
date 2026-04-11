@@ -272,3 +272,34 @@ func TestConvertToPrometheusMetrics(t *testing.T) {
 		t.Error("expected non-empty result from ConvertToPrometheusMetrics")
 	}
 }
+
+// TestNewPrometheusRemoteWriteShipper_NoTLS verifies that the constructor succeeds with TLS disabled.
+func TestNewPrometheusRemoteWriteShipper_NoTLS(t *testing.T) {
+	s, err := NewPrometheusRemoteWriteShipper("http://localhost:9999", false, "", "", "", false, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil shipper")
+	}
+	s.Close()
+}
+
+// TestNewPrometheusRemoteWriteShipper_WithTLS verifies that the constructor succeeds with a valid self-signed cert.
+func TestNewPrometheusRemoteWriteShipper_WithTLS(t *testing.T) {
+	certFile, keyFile, cleanup := generateTestCert(t)
+	defer cleanup()
+	s, err := NewPrometheusRemoteWriteShipper("https://localhost:9999", true, certFile, keyFile, "", false, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
+// TestNewPrometheusRemoteWriteShipper_BadCert verifies that a missing cert/key pair causes an error.
+func TestNewPrometheusRemoteWriteShipper_BadCert(t *testing.T) {
+	_, err := NewPrometheusRemoteWriteShipper("https://localhost:9999", true, "/nonexistent", "/nonexistent", "", false, 5*time.Second)
+	if err == nil {
+		t.Error("expected error for bad cert")
+	}
+}

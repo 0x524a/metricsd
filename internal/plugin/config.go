@@ -11,10 +11,10 @@ type PluginConfig struct {
 	Name       string   `json:"name"`
 	Path       string   `json:"-"` // Set by discovery, not from JSON
 	Args       []string `json:"args,omitempty"`
-	Timeout    int      `json:"timeout,omitempty"`    // Seconds
+	Timeout    int      `json:"timeout,omitempty"` // Seconds
 	Env        []string `json:"env,omitempty"`
 	WorkingDir string   `json:"working_dir,omitempty"`
-	Enabled    *bool    `json:"enabled,omitempty"`     // Pointer to distinguish unset from false
+	Enabled    *bool    `json:"enabled,omitempty"` // Pointer to distinguish unset from false
 	Interval   int      `json:"interval_seconds,omitempty"`
 }
 
@@ -45,14 +45,14 @@ type PluginMetric struct {
 // PluginHealth tracks the runtime health state of a single plugin.
 // Owned by the Manager, not the plugin itself.
 type PluginHealth struct {
-	Name              string
-	Status            string    // "ok", "failing", "circuit_open"
-	ConsecutiveFails  int
-	LastError         string
-	LastSuccess       time.Time
-	LastCollect       time.Time
-	LastMetricCount   int
-	CircuitOpenUntil  time.Time // Zero means circuit closed
+	Name             string
+	Status           string // "ok", "failing", "circuit_open"
+	ConsecutiveFails int
+	LastError        string
+	LastSuccess      time.Time
+	LastCollect      time.Time
+	LastMetricCount  int
+	CircuitOpenUntil time.Time // Zero means circuit closed
 }
 
 // DefaultTimeout is the fallback plugin timeout.

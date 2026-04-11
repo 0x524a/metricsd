@@ -151,3 +151,94 @@ func TestExecPlugin_Name(t *testing.T) {
 
 // Verify ExecPlugin satisfies collector.Collector interface
 var _ collector.Collector = (*ExecPlugin)(nil)
+
+// TestExecPlugin_LastStderr verifies that stderr output is captured and
+// returned by LastStderr even when the plugin succeeds.
+func TestExecPlugin_LastStderr(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "exec_plugin_stderr_test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Plugin that writes to stderr AND stdout so it succeeds.
+	path := writeTestPlugin(t, tmpDir, "stderr_plugin",
+		"#!/bin/bash\necho 'diagnostic info' >&2\necho '[{\"name\":\"ok\",\"value\":1}]'\n")
+
+	ep := NewExecPlugin(PluginConfig{Name: "stderr_test", Path: path, Timeout: 5})
+
+	metrics, err := ep.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect failed: %v", err)
+	}
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric, got %d", len(metrics))
+	}
+
+	stderr := ep.LastStderr()
+	if stderr == "" {
+		t.Error("expected non-empty LastStderr()")
+	}
+	if !containsSubstring(stderr, "diagnostic info") {
+		t.Errorf("expected 'diagnostic info' in stderr, got %q", stderr)
+	}
+}
+
+// TestExecPlugin_LastStderr_OnFailure verifies that stderr is also captured
+// when the plugin exits with a non-zero status.
+func TestExecPlugin_LastStderr_OnFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "exec_plugin_stderr_fail_test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	path := writeTestPlugin(t, tmpDir, "fail_with_stderr",
+		"#!/bin/bash\necho 'error message' >&2\nexit 1\n")
+
+	ep := NewExecPlugin(PluginConfig{Name: "fail_stderr", Path: path, Timeout: 5})
+
+	_, err = ep.Collect(context.Background())
+	if err == nil {
+		t.Fatal("expected error from failing plugin")
+	}
+
+	stderr := ep.LastStderr()
+	if !containsSubstring(stderr, "error message") {
+		t.Errorf("expected 'error message' in LastStderr(), got %q", stderr)
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
+		func() bool {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		}())
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		maxLen   int
+		expected string
+	}{
+		{"shorter than max", "hello", 10, "hello"},
+		{"equal to max", "hello", 5, "hello"},
+		{"longer than max", "hello world", 5, "hello..."},
+		{"empty string", "", 5, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := truncate(tt.input, tt.maxLen)
+			if result != tt.expected {
+				t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.maxLen, result, tt.expected)
+			}
+		})
+	}
+}

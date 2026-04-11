@@ -10,10 +10,10 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server     ServerConfig     `json:"server"`
-	Collector  CollectorConfig  `json:"collector"`
-	Shipper    ShipperConfig    `json:"shipper"`
-	Endpoints  []EndpointConfig `json:"endpoints"`
+	Server    ServerConfig     `json:"server"`
+	Collector CollectorConfig  `json:"collector"`
+	Shipper   ShipperConfig    `json:"shipper"`
+	Endpoints []EndpointConfig `json:"endpoints"`
 }
 
 // ServerConfig contains HTTP server settings

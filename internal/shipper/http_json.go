@@ -66,8 +66,8 @@ func NewHTTPJSONShipper(endpoint string, tlsEnabled bool, certFile, keyFile, caF
 
 // MetricPayload represents the JSON structure for shipping metrics
 type MetricPayload struct {
-	Timestamp int64             `json:"timestamp"`
-	Metrics   []MetricData      `json:"metrics"`
+	Timestamp int64        `json:"timestamp"`
+	Metrics   []MetricData `json:"metrics"`
 }
 
 // MetricData represents a single metric in JSON format
