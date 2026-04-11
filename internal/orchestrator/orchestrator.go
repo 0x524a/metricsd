@@ -12,10 +12,12 @@ import (
 
 // Orchestrator coordinates the collection and shipping of metrics (Single Responsibility Principle)
 type Orchestrator struct {
-	registry *collector.Registry
-	shipper  shipper.Shipper
-	interval time.Duration
-	stopChan chan struct{}
+	registry         *collector.Registry
+	shipper          shipper.Shipper
+	interval         time.Duration
+	stopChan         chan struct{}
+	lastShipDuration time.Duration
+	lastShipSuccess  bool
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -87,16 +89,41 @@ func (o *Orchestrator) collectAndShip(ctx context.Context) {
 		Dur("duration", collectDuration).
 		Msg("Metrics collected")
 
+	// Append internal metrics about metricsd itself
+	internalMetrics := []collector.Metric{
+		{
+			Name:   "metricsd_collection_duration_seconds",
+			Value:  collectDuration.Seconds(),
+			Type:   "gauge",
+			Labels: map[string]string{},
+		},
+	}
+
+	// Include last ship duration from previous cycle (avoids chicken-and-egg)
+	if o.lastShipDuration > 0 {
+		internalMetrics = append(internalMetrics, collector.Metric{
+			Name:   "metricsd_ship_duration_seconds",
+			Value:  o.lastShipDuration.Seconds(),
+			Type:   "gauge",
+			Labels: map[string]string{},
+		})
+	}
+
+	metrics = append(metrics, internalMetrics...)
+
 	// Ship metrics with one retry on failure
+	shipStart := time.Now()
 	if err := o.shipper.Ship(ctx, metrics); err != nil {
 		log.Warn().Err(err).Msg("Ship failed, retrying in 1s")
 		time.Sleep(1 * time.Second)
 
 		if err := o.shipper.Ship(ctx, metrics); err != nil {
 			log.Error().Err(err).Msg("Ship retry failed")
+			o.lastShipDuration = time.Since(shipStart)
 			return
 		}
 	}
+	o.lastShipDuration = time.Since(shipStart)
 
 	log.Info().
 		Int("metric_count", len(metrics)).
