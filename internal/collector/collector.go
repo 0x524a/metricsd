@@ -2,6 +2,8 @@ package collector
 
 import (
 	"context"
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -50,6 +52,30 @@ func (r *Registry) CollectAll(ctx context.Context) ([]Metric, error) {
 		allMetrics = append(allMetrics, metrics...)
 	}
 
+	return allMetrics, nil
+}
+
+// CollectAllParallel collects from all registered collectors in parallel.
+func (r *Registry) CollectAllParallel(ctx context.Context) ([]Metric, error) {
+	var mu sync.Mutex
+	var allMetrics []Metric
+	var wg sync.WaitGroup
+
+	for _, c := range r.collectors {
+		wg.Add(1)
+		go func(col Collector) {
+			defer wg.Done()
+			metrics, err := col.Collect(ctx)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			allMetrics = append(allMetrics, metrics...)
+			mu.Unlock()
+		}(c)
+	}
+
+	wg.Wait()
 	return allMetrics, nil
 }
 
