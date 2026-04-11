@@ -258,10 +258,10 @@ func (s *FileShipper) rotate() error {
 
 		if i == s.maxFiles-1 {
 			// Delete the oldest file
-			os.Remove(oldPath)
+			_ = os.Remove(oldPath)
 		} else {
 			// Rename to next number
-			os.Rename(oldPath, newPath)
+			_ = os.Rename(oldPath, newPath)
 		}
 	}
 

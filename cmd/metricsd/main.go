@@ -15,6 +15,7 @@ import (
 	"github.com/0x524A/metricsd/internal/collector"
 	"github.com/0x524A/metricsd/internal/config"
 	"github.com/0x524A/metricsd/internal/orchestrator"
+	"github.com/0x524A/metricsd/internal/plugin"
 	"github.com/0x524A/metricsd/internal/server"
 	"github.com/0x524A/metricsd/internal/shipper"
 )
@@ -49,9 +50,9 @@ func main() {
 	defer cancel()
 
 	// Initialize components
-	collectorRegistry := setupCollectors(cfg)
+	collectorRegistry, pluginMgr := setupCollectors(cfg)
 	metricShipper := setupShipper(cfg)
-	defer metricShipper.Close()
+	defer func() { _ = metricShipper.Close() }()
 
 	// Create orchestrator
 	orch := orchestrator.NewOrchestrator(
@@ -61,7 +62,11 @@ func main() {
 	)
 
 	// Create HTTP server for health checks
-	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port)
+	var healthProvider server.HealthProvider
+	if pluginMgr != nil {
+		healthProvider = &pluginHealthAdapter{mgr: pluginMgr}
+	}
+	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port, healthProvider)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -136,8 +141,9 @@ func setupLogging(level string) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 }
 
-func setupCollectors(cfg *config.Config) *collector.Registry {
+func setupCollectors(cfg *config.Config) (*collector.Registry, *plugin.Manager) {
 	registry := collector.NewRegistry()
+	var pluginMgr *plugin.Manager
 
 	// Register system collector if any OS metrics are enabled
 	if cfg.Collector.EnableCPU || cfg.Collector.EnableMemory || cfg.Collector.EnableDisk || cfg.Collector.EnableNetwork {
@@ -172,32 +178,50 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 		log.Info().Int("endpoint_count", len(endpoints)).Msg("HTTP collector registered")
 	}
 
-	// Register plugin collectors
+	// Register plugin manager
 	if cfg.Collector.Plugins.Enabled {
-		pluginCfg := collector.PluginDiscoveryConfig{
-			PluginsDir:        cfg.Collector.Plugins.PluginsDir,
-			Enabled:           true,
-			DefaultTimeout:    time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second,
-			ValidateOnStartup: cfg.Collector.Plugins.ValidateOnStartup,
-		}
+		pluginMgr = plugin.NewManager()
 
-		plugins, err := collector.DiscoverPlugins(pluginCfg)
+		// Discover shell plugins
+		defaultTimeout := time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second
+		if defaultTimeout == 0 {
+			defaultTimeout = plugin.DefaultTimeout
+		}
+		execPlugins, err := plugin.DiscoverPlugins(
+			cfg.Collector.Plugins.PluginsDir,
+			defaultTimeout,
+			cfg.Collector.Plugins.ValidateOnStartup,
+		)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to discover plugins")
-		} else {
-			for _, plugin := range plugins {
-				registry.Register(plugin)
-				log.Info().
-					Str("name", plugin.Name()).
-					Msg("Plugin collector registered")
+		}
+		for _, ep := range execPlugins {
+			pluginMgr.AddExecPlugin(ep)
+		}
+
+		// Instantiate registered Go plugins
+		for _, gpCfg := range cfg.Collector.Plugins.GoPlugins {
+			factories := plugin.GetRegisteredGoPlugins()
+			factory, ok := factories[gpCfg.Name]
+			if !ok {
+				log.Warn().Str("name", gpCfg.Name).Msg("No registered Go plugin factory found, skipping")
+				continue
 			}
-			if len(plugins) > 0 {
-				log.Info().Int("plugin_count", len(plugins)).Msg("Plugin collectors registered")
+			c, err := factory(gpCfg.Config)
+			if err != nil {
+				log.Warn().Str("name", gpCfg.Name).Err(err).Msg("Go plugin factory failed, skipping")
+				continue
 			}
+			pluginMgr.AddGoPlugin(gpCfg.Name, c)
+		}
+
+		if pluginMgr.PluginCount() > 0 {
+			registry.Register(pluginMgr)
+			log.Info().Int("plugin_count", pluginMgr.PluginCount()).Msg("Plugin manager registered")
 		}
 	}
 
-	return registry
+	return registry, pluginMgr
 }
 
 func setupShipper(cfg *config.Config) shipper.Shipper {
@@ -302,4 +326,33 @@ func cleanupGPUCollector(registry *collector.Registry) {
 	// Note: In a production system, you would want to have a better way to manage
 	// lifecycle of collectors. For now, this is a simple cleanup approach.
 	log.Debug().Msg("Cleaning up GPU collector resources")
+}
+
+type pluginHealthAdapter struct {
+	mgr *plugin.Manager
+}
+
+func (a *pluginHealthAdapter) GetHealthData() map[string]server.CollectorHealth {
+	if a.mgr == nil {
+		return nil
+	}
+	health := a.mgr.GetHealth()
+	result := make(map[string]server.CollectorHealth, len(health))
+	for name, h := range health {
+		result[name] = server.CollectorHealth{
+			Status:           h.Status,
+			LastCollect:      formatTime(h.LastCollect),
+			MetricCount:      h.LastMetricCount,
+			ConsecutiveFails: h.ConsecutiveFails,
+			LastError:        h.LastError,
+		}
+	}
+	return result
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }

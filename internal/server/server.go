@@ -10,31 +10,48 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// HealthStatus represents the health status response
-type HealthStatus struct {
-	Status    string    `json:"status"`
-	Timestamp time.Time `json:"timestamp"`
-	Uptime    string    `json:"uptime"`
+// CollectorHealth is the health info for a single collector.
+type CollectorHealth struct {
+	Status           string `json:"status"`
+	LastCollect      string `json:"last_collect,omitempty"`
+	MetricCount      int    `json:"metric_count,omitempty"`
+	ConsecutiveFails int    `json:"consecutive_failures,omitempty"`
+	LastError        string `json:"last_error,omitempty"`
 }
 
-// Server provides HTTP endpoints for health checks (Single Responsibility Principle)
+// DetailedHealthStatus is the full health response.
+type DetailedHealthStatus struct {
+	Status     string                     `json:"status"`
+	Uptime     float64                    `json:"uptime_seconds"`
+	Collectors map[string]CollectorHealth `json:"collectors,omitempty"`
+}
+
+// HealthProvider supplies plugin health data to the server.
+type HealthProvider interface {
+	GetHealthData() map[string]CollectorHealth
+}
+
+// Server provides HTTP endpoints for health checks.
 type Server struct {
-	host      string
-	port      int
-	server    *http.Server
-	startTime time.Time
+	host           string
+	port           int
+	server         *http.Server
+	startTime      time.Time
+	healthProvider HealthProvider
 }
 
-// NewServer creates a new HTTP server
-func NewServer(host string, port int) *Server {
+// NewServer creates a new HTTP server.
+// healthProvider may be nil if no detailed health is available.
+func NewServer(host string, port int, healthProvider HealthProvider) *Server {
 	return &Server{
-		host:      host,
-		port:      port,
-		startTime: time.Now(),
+		host:           host,
+		port:           port,
+		startTime:      time.Now(),
+		healthProvider: healthProvider,
 	}
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server.
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
@@ -44,10 +61,7 @@ func (s *Server) Start(ctx context.Context) error {
 		Handler: mux,
 	}
 
-	log.Info().
-		Str("host", s.host).
-		Int("port", s.port).
-		Msg("Starting HTTP server")
+	log.Info().Str("host", s.host).Int("port", s.port).Msg("Starting HTTP server")
 
 	errChan := make(chan error, 1)
 	go func() {
@@ -56,7 +70,6 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for context cancellation or server error
 	select {
 	case <-ctx.Done():
 		return s.Shutdown(context.Background())
@@ -65,7 +78,7 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// Shutdown gracefully shuts down the server
+// Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.server != nil {
 		log.Info().Msg("Shutting down HTTP server")
@@ -80,16 +93,18 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uptime := time.Since(s.startTime)
-	status := HealthStatus{
-		Status:    "healthy",
-		Timestamp: time.Now(),
-		Uptime:    uptime.String(),
+	uptime := time.Since(s.startTime).Seconds()
+	status := DetailedHealthStatus{
+		Status: "healthy",
+		Uptime: uptime,
+	}
+
+	if s.healthProvider != nil {
+		status.Collectors = s.healthProvider.GetHealthData()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
 	if err := json.NewEncoder(w).Encode(status); err != nil {
 		log.Error().Err(err).Msg("Failed to encode health status")
 	}

@@ -80,7 +80,7 @@ Then update the plugin configuration to use sudo:
 ```json
 {
   "name": "nerdctl",
-  "timeout": 60000000000,
+  "timeout": 60,
   "enabled": true,
   "path": "/usr/lib/metricsd/plugins/nerdctl-wrapper"
 }
@@ -107,7 +107,7 @@ If nerdctl is accessible but containers aren't showing, specify the namespace:
 ```json
 {
   "name": "nerdctl",
-  "timeout": 60000000000,
+  "timeout": 60,
   "enabled": true,
   "env": [
     "NERDCTL_NAMESPACE=k8s.io"
