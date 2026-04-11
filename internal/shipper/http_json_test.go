@@ -186,3 +186,34 @@ func TestHTTPJSONShipper_Close(t *testing.T) {
 		t.Errorf("Close() returned unexpected error: %v", err)
 	}
 }
+
+// TestNewHTTPJSONShipper_NoTLS verifies that the constructor succeeds with TLS disabled.
+func TestNewHTTPJSONShipper_NoTLS(t *testing.T) {
+	s, err := NewHTTPJSONShipper("http://localhost:9999", false, "", "", "", false, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil shipper")
+	}
+	s.Close()
+}
+
+// TestNewHTTPJSONShipper_WithTLS verifies that the constructor succeeds with a valid self-signed cert.
+func TestNewHTTPJSONShipper_WithTLS(t *testing.T) {
+	certFile, keyFile, cleanup := generateTestCert(t)
+	defer cleanup()
+	s, err := NewHTTPJSONShipper("https://localhost:9999", true, certFile, keyFile, "", false, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
+// TestNewHTTPJSONShipper_BadCert verifies that a missing cert/key pair causes an error.
+func TestNewHTTPJSONShipper_BadCert(t *testing.T) {
+	_, err := NewHTTPJSONShipper("https://localhost:9999", true, "/nonexistent", "/nonexistent", "", false, 5*time.Second)
+	if err == nil {
+		t.Error("expected error for bad cert")
+	}
+}

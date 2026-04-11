@@ -212,4 +212,3 @@ func (s *SplunkHECShipper) logPayloadToFile(payload string) {
 		log.Error().Err(err).Msg("Failed to write to debug log file")
 	}
 }
-

@@ -154,3 +154,35 @@ func TestValidateMetricOutput(t *testing.T) {
 		}
 	})
 }
+
+func TestValidatePluginPath_BadPluginsDir(t *testing.T) {
+	// Plugins dir that doesn't exist — EvalSymlinks fails
+	_, err := ValidatePluginPath("/tmp/nonexistent/plugin", "/tmp/nonexistent")
+	if err == nil {
+		t.Error("expected error for non-existent plugins dir")
+	}
+}
+
+func TestValidateMetricOutput_MultipleLabels(t *testing.T) {
+	// Test with valid metric having multiple labels
+	metrics := []PluginMetric{
+		{Name: "test_metric", Value: 1, Labels: map[string]string{"a": "1", "b": "2", "c": "3"}},
+	}
+	result := ValidateMetricOutput(metrics, "test")
+	if len(result) != 1 {
+		t.Errorf("expected 1 metric, got %d", len(result))
+	}
+	if len(result[0].Labels) != 3 {
+		t.Errorf("expected 3 labels, got %d", len(result[0].Labels))
+	}
+}
+
+func TestValidateMetricOutput_NilLabels(t *testing.T) {
+	metrics := []PluginMetric{
+		{Name: "test_metric", Value: 1, Labels: nil},
+	}
+	result := ValidateMetricOutput(metrics, "test")
+	if len(result) != 1 {
+		t.Errorf("expected 1 metric, got %d", len(result))
+	}
+}
