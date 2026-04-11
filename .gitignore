@@ -37,3 +37,6 @@ dist/
 
 # Serena
 .serena/
+
+# Claude skills (contain deployment-specific info)
+.claude/skills/
