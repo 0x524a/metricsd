@@ -1,0 +1,5 @@
+{
+  "name": "ubuntu_pro",
+  "timeout": 15,
+  "enabled": true
+}

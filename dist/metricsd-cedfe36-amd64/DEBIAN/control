@@ -1,0 +1,19 @@
+Package: metricsd
+Version: cedfe36
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: Your Name <your.email@example.com>
+Depends: libc6 (>= 2.31), systemd
+Recommends: ca-certificates
+Description: System and application metrics collector
+ metricsd is a lightweight metrics collector with plugin support.
+ It can collect system metrics (CPU, memory, disk, network, GPU)
+ and ship them to various backends (Prometheus, Splunk HEC, HTTP JSON).
+ .
+ Features:
+  - Built-in system metrics collectors
+  - Plugin system for extensibility
+  - Multiple shipper backends
+  - Systemd integration
+  - TLS support

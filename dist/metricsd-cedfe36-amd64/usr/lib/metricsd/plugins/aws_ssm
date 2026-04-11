@@ -1,0 +1,153 @@
+#!/bin/bash
+# aws_ssm metrics plugin for metricsd
+# Collects AWS Systems Manager (SSM) agent status and instance information
+#
+# Metrics collected:
+# - aws_ssm_agent_installed: Whether SSM agent is installed (0/1)
+# - aws_ssm_agent_running: Whether SSM agent is running (0/1)
+# - aws_ssm_registered: Whether instance is registered with SSM (0/1)
+# - aws_ssm_agent_info: SSM agent version and instance ID (info metric)
+#
+# Labels include:
+# - instance_id: EC2 instance ID (i-*) or managed instance ID (mi-*)
+# - agent_version: SSM agent version
+# - region: AWS region
+#
+# Output format: JSON array of metrics following the plugin schema
+
+set -e
+
+# Start JSON array
+echo "["
+
+first=true
+
+# Function to output a metric
+output_metric() {
+    local name="$1"
+    local value="$2"
+    local type="${3:-gauge}"
+    local labels="$4"
+
+    # Skip if value is empty or not a number
+    if [ -z "$value" ] || ! [[ "$value" =~ ^-?[0-9]+\.?[0-9]*$ ]]; then
+        return
+    fi
+
+    if [ "$first" = true ]; then
+        first=false
+    else
+        echo ","
+    fi
+
+    if [ -n "$labels" ]; then
+        echo "  {\"name\": \"$name\", \"value\": $value, \"type\": \"$type\", \"labels\": {$labels}}"
+    else
+        echo "  {\"name\": \"$name\", \"value\": $value, \"type\": \"$type\"}"
+    fi
+}
+
+# Function to escape string for JSON
+json_escape() {
+    echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+}
+
+# Check if SSM agent is installed
+ssm_installed=0
+agent_version=""
+agent_running=0
+
+# Check for amazon-ssm-agent service (systemd)
+if systemctl list-unit-files 2>/dev/null | grep -q "amazon-ssm-agent.service"; then
+    ssm_installed=1
+
+    # Check if agent is running
+    if systemctl is-active --quiet amazon-ssm-agent 2>/dev/null; then
+        agent_running=1
+    fi
+
+    # Try to get agent version
+    if command -v amazon-ssm-agent &> /dev/null; then
+        agent_version=$(amazon-ssm-agent -version 2>/dev/null | head -1 | awk '{print $NF}' || echo "unknown")
+    fi
+elif [ -f "/etc/init.d/amazon-ssm-agent" ]; then
+    # SysV init system
+    ssm_installed=1
+
+    if service amazon-ssm-agent status 2>/dev/null | grep -q "running"; then
+        agent_running=1
+    fi
+fi
+
+# Output SSM agent installed status
+output_metric "aws_ssm_agent_installed" "$ssm_installed" "gauge" ""
+
+# If SSM agent is not installed, exit early
+if [ "$ssm_installed" -eq 0 ]; then
+    echo ""
+    echo "]"
+    exit 0
+fi
+
+# Output agent running status
+output_metric "aws_ssm_agent_running" "$agent_running" "gauge" ""
+
+# Get instance ID and region
+instance_id=""
+region=""
+registered=0
+
+# Try to get instance ID from EC2 metadata service (for EC2 instances)
+if command -v curl &> /dev/null; then
+    instance_id=$(curl -s -m 2 http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo "")
+    region=$(curl -s -m 2 http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "")
+fi
+
+# If not found via metadata, try to get managed instance ID from SSM agent config
+if [ -z "$instance_id" ]; then
+    # Check SSM registration file (for hybrid/on-premises instances)
+    if [ -f "/var/lib/amazon/ssm/registration" ]; then
+        registered=1
+        # Try to extract managed instance ID from registration file
+        instance_id=$(grep -oP '"ManagedInstanceID"\s*:\s*"\K[^"]+' /var/lib/amazon/ssm/registration 2>/dev/null || echo "")
+        region=$(grep -oP '"Region"\s*:\s*"\K[^"]+' /var/lib/amazon/ssm/registration 2>/dev/null || echo "")
+    fi
+
+    # Fallback: check Vault store
+    if [ -z "$instance_id" ] && [ -f "/var/lib/amazon/ssm/Vault/Store/RegistrationKey" ]; then
+        registered=1
+        instance_id=$(cat /var/lib/amazon/ssm/Vault/Store/RegistrationKey 2>/dev/null | grep -oP 'mi-[a-f0-9]+' || echo "")
+    fi
+elif [[ "$instance_id" == i-* ]]; then
+    # EC2 instance - if we got metadata, it's registered
+    registered=1
+fi
+
+# Set defaults if still empty
+if [ -z "$instance_id" ]; then
+    instance_id="unknown"
+fi
+
+if [ -z "$region" ]; then
+    region="unknown"
+fi
+
+if [ -z "$agent_version" ]; then
+    agent_version="unknown"
+fi
+
+# Output registration status
+output_metric "aws_ssm_registered" "$registered" "gauge" ""
+
+# Escape for JSON
+safe_instance_id=$(json_escape "$instance_id")
+safe_region=$(json_escape "$region")
+safe_version=$(json_escape "$agent_version")
+
+# Output SSM agent info metric with labels
+labels="\"instance_id\": \"$safe_instance_id\", \"region\": \"$safe_region\", \"agent_version\": \"$safe_version\""
+output_metric "aws_ssm_agent_info" "1" "gauge" "$labels"
+
+# Close JSON array
+echo ""
+echo "]"

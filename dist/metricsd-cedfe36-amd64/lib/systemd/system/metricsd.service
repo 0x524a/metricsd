@@ -1,0 +1,34 @@
+[Unit]
+Description=metricsd metrics collector
+Documentation=https://github.com/yourusername/metricsd
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=metricsd
+Group=metricsd
+ExecStart=/usr/bin/metricsd -config /etc/metricsd/config.json
+Restart=on-failure
+RestartSec=10s
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/metricsd
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+[Install]
+WantedBy=multi-user.target
