@@ -60,16 +60,26 @@ func (m *Manager) Collect(ctx context.Context) ([]collector.Metric, error) {
 		err     error
 	}
 
+	// Snapshot circuit breaker state under a single lock acquisition
+	m.mu.RLock()
+	type circuitState struct {
+		openUntil time.Time
+	}
+	circuits := make(map[string]circuitState, len(entries))
+	for _, entry := range entries {
+		if h := m.health[entry.name]; h != nil {
+			circuits[entry.name] = circuitState{openUntil: h.CircuitOpenUntil}
+		}
+	}
+	m.mu.RUnlock()
+
 	results := make(chan result, len(entries))
 	var wg sync.WaitGroup
+	now := time.Now()
 
 	for _, entry := range entries {
-		m.mu.RLock()
-		h := m.health[entry.name]
-		m.mu.RUnlock()
-
-		if h != nil && !h.CircuitOpenUntil.IsZero() && time.Now().Before(h.CircuitOpenUntil) {
-			log.Debug().Str("plugin", entry.name).Time("circuit_open_until", h.CircuitOpenUntil).Msg("Skipping plugin — circuit open")
+		if cs, ok := circuits[entry.name]; ok && !cs.openUntil.IsZero() && now.Before(cs.openUntil) {
+			log.Debug().Str("plugin", entry.name).Time("circuit_open_until", cs.openUntil).Msg("Skipping plugin — circuit open")
 			continue
 		}
 
