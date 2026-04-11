@@ -244,6 +244,114 @@ func TestGetCollectionInterval(t *testing.T) {
 // helpers
 // ---------------------------------------------------------------------------
 
+func TestApplyEnvOverrides_AllVars(t *testing.T) {
+	t.Setenv("MC_SERVER_HOST", "10.0.0.1")
+	t.Setenv("MC_COLLECTOR_INTERVAL", "42")
+	t.Setenv("MC_SHIPPER_TYPE", "http_json")
+	t.Setenv("MC_SHIPPER_ENDPOINT", "http://override.example.com/metrics")
+	t.Setenv("MC_TLS_ENABLED", "true")
+	t.Setenv("MC_TLS_CERT_FILE", "/etc/certs/client.crt")
+	t.Setenv("MC_TLS_KEY_FILE", "/etc/certs/client.key")
+	t.Setenv("MC_TLS_CA_FILE", "/etc/certs/ca.crt")
+	t.Setenv("MC_HEC_TOKEN", "my-hec-token")
+	t.Setenv("MC_PLUGINS_ENABLED", "true")
+	t.Setenv("MC_PLUGINS_DIR", "/opt/plugins")
+	t.Setenv("MC_PLUGINS_DEFAULT_TIMEOUT", "60")
+	t.Setenv("MC_PLUGINS_VALIDATE", "true")
+	t.Setenv("MC_FILE_PATH", "/var/log/metrics.json")
+	t.Setenv("MC_FILE_MAX_SIZE_MB", "200")
+	t.Setenv("MC_FILE_MAX_FILES", "10")
+	t.Setenv("MC_FILE_FORMAT", "multi")
+
+	cfg := minimalValidConfig()
+	applyEnvOverrides(&cfg)
+
+	if cfg.Server.Host != "10.0.0.1" {
+		t.Errorf("Server.Host = %q, want %q", cfg.Server.Host, "10.0.0.1")
+	}
+	if cfg.Collector.IntervalSeconds != 42 {
+		t.Errorf("Collector.IntervalSeconds = %d, want 42", cfg.Collector.IntervalSeconds)
+	}
+	if cfg.Shipper.Type != "http_json" {
+		t.Errorf("Shipper.Type = %q, want %q", cfg.Shipper.Type, "http_json")
+	}
+	if cfg.Shipper.Endpoint != "http://override.example.com/metrics" {
+		t.Errorf("Shipper.Endpoint = %q, want %q", cfg.Shipper.Endpoint, "http://override.example.com/metrics")
+	}
+	if !cfg.Shipper.TLS.Enabled {
+		t.Error("Shipper.TLS.Enabled should be true")
+	}
+	if cfg.Shipper.TLS.CertFile != "/etc/certs/client.crt" {
+		t.Errorf("Shipper.TLS.CertFile = %q, want %q", cfg.Shipper.TLS.CertFile, "/etc/certs/client.crt")
+	}
+	if cfg.Shipper.TLS.KeyFile != "/etc/certs/client.key" {
+		t.Errorf("Shipper.TLS.KeyFile = %q, want %q", cfg.Shipper.TLS.KeyFile, "/etc/certs/client.key")
+	}
+	if cfg.Shipper.TLS.CAFile != "/etc/certs/ca.crt" {
+		t.Errorf("Shipper.TLS.CAFile = %q, want %q", cfg.Shipper.TLS.CAFile, "/etc/certs/ca.crt")
+	}
+	if cfg.Shipper.HECToken != "my-hec-token" {
+		t.Errorf("Shipper.HECToken = %q, want %q", cfg.Shipper.HECToken, "my-hec-token")
+	}
+	if !cfg.Collector.Plugins.Enabled {
+		t.Error("Collector.Plugins.Enabled should be true")
+	}
+	if cfg.Collector.Plugins.PluginsDir != "/opt/plugins" {
+		t.Errorf("Collector.Plugins.PluginsDir = %q, want %q", cfg.Collector.Plugins.PluginsDir, "/opt/plugins")
+	}
+	if cfg.Collector.Plugins.DefaultTimeoutSeconds != 60 {
+		t.Errorf("Collector.Plugins.DefaultTimeoutSeconds = %d, want 60", cfg.Collector.Plugins.DefaultTimeoutSeconds)
+	}
+	if !cfg.Collector.Plugins.ValidateOnStartup {
+		t.Error("Collector.Plugins.ValidateOnStartup should be true")
+	}
+	if cfg.Shipper.File.Path != "/var/log/metrics.json" {
+		t.Errorf("Shipper.File.Path = %q, want %q", cfg.Shipper.File.Path, "/var/log/metrics.json")
+	}
+	if cfg.Shipper.File.MaxSizeMB != 200 {
+		t.Errorf("Shipper.File.MaxSizeMB = %d, want 200", cfg.Shipper.File.MaxSizeMB)
+	}
+	if cfg.Shipper.File.MaxFiles != 10 {
+		t.Errorf("Shipper.File.MaxFiles = %d, want 10", cfg.Shipper.File.MaxFiles)
+	}
+	if cfg.Shipper.File.Format != "multi" {
+		t.Errorf("Shipper.File.Format = %q, want %q", cfg.Shipper.File.Format, "multi")
+	}
+}
+
+func TestValidate_FileFormatValidation(t *testing.T) {
+	tests := []struct {
+		format  string
+		wantErr bool
+	}{
+		{"single", false},
+		{"multi", false},
+		{"invalid", true},
+	}
+
+	for _, tc := range tests {
+		t.Run("format_"+tc.format, func(t *testing.T) {
+			cfg := minimalValidConfig()
+			cfg.Shipper.Type = "json_file"
+			cfg.Shipper.Endpoint = ""
+			cfg.Shipper.File.Path = "/tmp/metrics.json"
+			cfg.Shipper.File.Format = tc.format
+
+			err := cfg.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() expected error for format %q, got nil", tc.format)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() unexpected error for format %q: %v", tc.format, err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
 // itoa is a minimal int-to-string helper to avoid importing strconv in tests.
 func itoa(n int) string {
 	if n == 0 {
