@@ -173,3 +173,16 @@ func TestHTTPJSONShipper_ServerError(t *testing.T) {
 		t.Error("expected error for 503 response, got nil")
 	}
 }
+
+// TestHTTPJSONShipper_Close verifies that Close does not panic and returns nil.
+func TestHTTPJSONShipper_Close(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := newTestHTTPJSONShipper(t, srv.URL)
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}
