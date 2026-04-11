@@ -115,7 +115,15 @@ func (o *Orchestrator) collectAndShip(ctx context.Context) {
 	shipStart := time.Now()
 	if err := o.shipper.Ship(ctx, metrics); err != nil {
 		log.Warn().Err(err).Msg("Ship failed, retrying in 1s")
-		time.Sleep(1 * time.Second)
+
+		// Context-aware backoff — don't block if shutting down
+		select {
+		case <-ctx.Done():
+			log.Warn().Msg("Ship retry cancelled — context done")
+			o.lastShipDuration = time.Since(shipStart)
+			return
+		case <-time.After(1 * time.Second):
+		}
 
 		if err := o.shipper.Ship(ctx, metrics); err != nil {
 			log.Error().Err(err).Msg("Ship retry failed")

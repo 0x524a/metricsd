@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog/log"
 )
 
 // Metric represents a collected metric
@@ -67,6 +68,7 @@ func (r *Registry) CollectAllParallel(ctx context.Context) ([]Metric, error) {
 			defer wg.Done()
 			metrics, err := col.Collect(ctx)
 			if err != nil {
+				log.Warn().Err(err).Str("collector", col.Name()).Msg("Collector failed during parallel collection")
 				return
 			}
 			mu.Lock()

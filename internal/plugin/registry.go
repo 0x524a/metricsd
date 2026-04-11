@@ -14,7 +14,11 @@ func RegisterGoPlugin(name string, factory GoPluginFactory) {
 	goPluginRegistry[name] = factory
 }
 
-// GetRegisteredGoPlugins returns all registered Go plugin factories.
+// GetRegisteredGoPlugins returns a copy of all registered Go plugin factories.
 func GetRegisteredGoPlugins() map[string]GoPluginFactory {
-	return goPluginRegistry
+	copy := make(map[string]GoPluginFactory, len(goPluginRegistry))
+	for k, v := range goPluginRegistry {
+		copy[k] = v
+	}
+	return copy
 }
