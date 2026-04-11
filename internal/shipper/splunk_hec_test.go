@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +203,76 @@ func TestNewSplunkHECShipper_EmptyEndpoint(t *testing.T) {
 	)
 	if err == nil {
 		t.Error("expected error for empty endpoint, got nil")
+	}
+}
+
+// TestSplunkHECShipper_Close verifies that Close does not panic and returns nil.
+func TestSplunkHECShipper_Close(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := newTestSplunkShipper(t, srv.URL)
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}
+
+// TestSplunkHECShipper_LogPayloadToFile verifies that, when debugLogFile is set,
+// Ship writes a payload entry that contains the timestamp header and the
+// metric_name of each shipped metric.
+func TestSplunkHECShipper_LogPayloadToFile(t *testing.T) {
+	// Spin up a server that always returns 200.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// Create a temp file for the debug log.
+	tmpFile, err := os.CreateTemp("", "splunk-debug-*.log")
+	if err != nil {
+		t.Fatalf("os.CreateTemp: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	// Build a shipper with the debug log path set.
+	s, err := NewSplunkHECShipper(
+		srv.URL,
+		"test-token",
+		false,
+		"", "", "",
+		false,
+		5*time.Second,
+		tmpFile.Name(),
+	)
+	if err != nil {
+		t.Fatalf("NewSplunkHECShipper: %v", err)
+	}
+
+	metrics := []collector.Metric{
+		{Name: "cpu_usage", Value: 77.0, Type: "gauge", Labels: map[string]string{"host": "box1"}},
+	}
+
+	if err := s.Ship(context.Background(), metrics); err != nil {
+		t.Fatalf("Ship returned error: %v", err)
+	}
+
+	// Read the debug log and verify it contains the expected content.
+	data, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("os.ReadFile: %v", err)
+	}
+
+	content := string(data)
+
+	// The header written by logPayloadToFile should include the marker text.
+	if !strings.Contains(content, "Splunk HEC Payload at") {
+		t.Error("debug log missing timestamp header '=== Splunk HEC Payload at ...' ===")
+	}
+	// The payload itself should reference the metric name.
+	if !strings.Contains(content, "cpu_usage") {
+		t.Error("debug log missing metric name 'cpu_usage'")
 	}
 }
