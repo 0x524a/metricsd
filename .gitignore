@@ -40,3 +40,6 @@ dist/
 
 # Claude skills (contain deployment-specific info)
 .claude/skills/
+
+# Superpowers specs/plans
+docs/superpowers/
