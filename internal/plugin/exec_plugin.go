@@ -18,7 +18,7 @@ import (
 )
 
 const defaultMaxOutputBytes = 5 * 1024 * 1024 // 5MB
-const maxStderrCapture = 4096                  // 4KB
+const maxStderrCapture = 4096                 // 4KB
 
 // ExecPlugin executes a shell script and parses its JSON output.
 type ExecPlugin struct {

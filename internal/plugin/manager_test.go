@@ -126,3 +126,35 @@ func TestManager_GetHealth(t *testing.T) {
 }
 
 var _ collector.Collector = (*Manager)(nil)
+
+// TestManager_AddExecPlugin verifies that AddExecPlugin registers the plugin
+// and increments the count.
+func TestManager_AddExecPlugin(t *testing.T) {
+	m := NewManager()
+	ep := NewExecPlugin(PluginConfig{Name: "my_exec_plugin", Path: "/bin/true", Timeout: 5})
+	m.AddExecPlugin(ep)
+
+	if m.PluginCount() != 1 {
+		t.Errorf("expected PluginCount 1 after AddExecPlugin, got %d", m.PluginCount())
+	}
+
+	health := m.GetHealth()
+	if _, ok := health["my_exec_plugin"]; !ok {
+		t.Error("expected health entry for 'my_exec_plugin'")
+	}
+}
+
+// TestManager_PluginCount verifies that PluginCount reflects the total number
+// of registered plugins (mix of Go and exec plugins).
+func TestManager_PluginCount(t *testing.T) {
+	m := NewManager()
+
+	m.AddGoPlugin("p1", &mockCollector{name: "p1"})
+	m.AddGoPlugin("p2", &mockCollector{name: "p2"})
+	ep := NewExecPlugin(PluginConfig{Name: "p3", Path: "/bin/true", Timeout: 5})
+	m.AddExecPlugin(ep)
+
+	if m.PluginCount() != 3 {
+		t.Errorf("expected PluginCount 3, got %d", m.PluginCount())
+	}
+}

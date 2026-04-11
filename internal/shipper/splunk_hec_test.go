@@ -38,10 +38,10 @@ func newTestSplunkShipper(t *testing.T, serverURL string) *SplunkHECShipper {
 // correct path, carries the expected headers, and contains well-formed JSON events.
 func TestSplunkHECShipper_ShipSuccess(t *testing.T) {
 	var (
-		capturedPath   string
-		capturedAuth   string
-		capturedCT     string
-		capturedBody   []byte
+		capturedPath string
+		capturedAuth string
+		capturedCT   string
+		capturedBody []byte
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -216,6 +216,47 @@ func TestSplunkHECShipper_Close(t *testing.T) {
 	s := newTestSplunkShipper(t, srv.URL)
 	if err := s.Close(); err != nil {
 		t.Errorf("Close() returned unexpected error: %v", err)
+	}
+}
+
+// TestNewSplunkHECShipper_NoTLS verifies that the constructor succeeds with TLS disabled.
+func TestNewSplunkHECShipper_NoTLS(t *testing.T) {
+	s, err := NewSplunkHECShipper("http://localhost:9999", "token", false, "", "", "", false, 5*time.Second, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil shipper")
+	}
+	s.Close()
+}
+
+// TestNewSplunkHECShipper_WithTLS verifies that the constructor succeeds with a valid self-signed cert.
+func TestNewSplunkHECShipper_WithTLS(t *testing.T) {
+	certFile, keyFile, cleanup := generateTestCert(t)
+	defer cleanup()
+	s, err := NewSplunkHECShipper("https://localhost:9999", "token", true, certFile, keyFile, "", false, 5*time.Second, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+}
+
+// TestNewSplunkHECShipper_BadCert verifies that a missing cert/key pair causes an error.
+func TestNewSplunkHECShipper_BadCert(t *testing.T) {
+	_, err := NewSplunkHECShipper("https://localhost:9999", "token", true, "/nonexistent", "/nonexistent", "", false, 5*time.Second, "")
+	if err == nil {
+		t.Error("expected error for bad cert")
+	}
+}
+
+// TestNewSplunkHECShipper_BadCAFile verifies that a bad CA file path causes an error when TLS is enabled.
+func TestNewSplunkHECShipper_BadCAFile(t *testing.T) {
+	certFile, keyFile, cleanup := generateTestCert(t)
+	defer cleanup()
+	_, err := NewSplunkHECShipper("https://localhost:9999", "token", true, certFile, keyFile, "/nonexistent/ca.pem", false, 5*time.Second, "")
+	if err == nil {
+		t.Error("expected error for bad CA file path")
 	}
 }
 
