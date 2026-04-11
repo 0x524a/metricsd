@@ -50,7 +50,7 @@ func main() {
 	defer cancel()
 
 	// Initialize components
-	collectorRegistry := setupCollectors(cfg)
+	collectorRegistry, pluginMgr := setupCollectors(cfg)
 	metricShipper := setupShipper(cfg)
 	defer metricShipper.Close()
 
@@ -62,7 +62,11 @@ func main() {
 	)
 
 	// Create HTTP server for health checks
-	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port)
+	var healthProvider server.HealthProvider
+	if pluginMgr != nil {
+		healthProvider = &pluginHealthAdapter{mgr: pluginMgr}
+	}
+	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port, healthProvider)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -137,8 +141,9 @@ func setupLogging(level string) {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 }
 
-func setupCollectors(cfg *config.Config) *collector.Registry {
+func setupCollectors(cfg *config.Config) (*collector.Registry, *plugin.Manager) {
 	registry := collector.NewRegistry()
+	var pluginMgr *plugin.Manager
 
 	// Register system collector if any OS metrics are enabled
 	if cfg.Collector.EnableCPU || cfg.Collector.EnableMemory || cfg.Collector.EnableDisk || cfg.Collector.EnableNetwork {
@@ -175,7 +180,7 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 
 	// Register plugin manager
 	if cfg.Collector.Plugins.Enabled {
-		pluginMgr := plugin.NewManager()
+		pluginMgr = plugin.NewManager()
 
 		// Discover shell plugins
 		defaultTimeout := time.Duration(cfg.Collector.Plugins.DefaultTimeoutSeconds) * time.Second
@@ -216,7 +221,7 @@ func setupCollectors(cfg *config.Config) *collector.Registry {
 		}
 	}
 
-	return registry
+	return registry, pluginMgr
 }
 
 func setupShipper(cfg *config.Config) shipper.Shipper {
@@ -321,4 +326,33 @@ func cleanupGPUCollector(registry *collector.Registry) {
 	// Note: In a production system, you would want to have a better way to manage
 	// lifecycle of collectors. For now, this is a simple cleanup approach.
 	log.Debug().Msg("Cleaning up GPU collector resources")
+}
+
+type pluginHealthAdapter struct {
+	mgr *plugin.Manager
+}
+
+func (a *pluginHealthAdapter) GetHealthData() map[string]server.CollectorHealth {
+	if a.mgr == nil {
+		return nil
+	}
+	health := a.mgr.GetHealth()
+	result := make(map[string]server.CollectorHealth, len(health))
+	for name, h := range health {
+		result[name] = server.CollectorHealth{
+			Status:           h.Status,
+			LastCollect:      formatTime(h.LastCollect),
+			MetricCount:      h.LastMetricCount,
+			ConsecutiveFails: h.ConsecutiveFails,
+			LastError:        h.LastError,
+		}
+	}
+	return result
+}
+
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }
