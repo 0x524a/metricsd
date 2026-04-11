@@ -52,7 +52,7 @@ func main() {
 	// Initialize components
 	collectorRegistry, pluginMgr := setupCollectors(cfg)
 	metricShipper := setupShipper(cfg)
-	defer metricShipper.Close()
+	defer func() { _ = metricShipper.Close() }()
 
 	// Create orchestrator
 	orch := orchestrator.NewOrchestrator(

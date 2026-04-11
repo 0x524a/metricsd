@@ -169,7 +169,7 @@ func (s *SplunkHECShipper) Ship(ctx context.Context, metrics []collector.Metric)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -204,7 +204,7 @@ func (s *SplunkHECShipper) logPayloadToFile(payload string) {
 		log.Error().Err(err).Str("file", s.debugLogFile).Msg("Failed to open debug log file")
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	timestamp := time.Now().Format(time.RFC3339)
 	header := fmt.Sprintf("\n=== Splunk HEC Payload at %s ===\n", timestamp)

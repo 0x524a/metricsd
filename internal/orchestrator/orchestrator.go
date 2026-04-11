@@ -17,7 +17,6 @@ type Orchestrator struct {
 	interval         time.Duration
 	stopChan         chan struct{}
 	lastShipDuration time.Duration
-	lastShipSuccess  bool
 }
 
 // NewOrchestrator creates a new orchestrator
