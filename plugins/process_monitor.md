@@ -19,7 +19,7 @@ The plugin reads its configuration from `process_monitor.json` in the same direc
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "nginx",
@@ -36,7 +36,7 @@ The plugin reads its configuration from `process_monitor.json` in the same direc
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Plugin name (must be "process_monitor") |
-| `timeout` | integer | Plugin execution timeout in nanoseconds |
+| `timeout` | integer | Plugin execution timeout in seconds |
 | `enabled` | boolean | Enable/disable the plugin |
 | `processes` | array | List of process names to monitor |
 
@@ -142,7 +142,7 @@ Each metric includes the following labels:
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "nginx",
@@ -157,7 +157,7 @@ Each metric includes the following labels:
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "postgres",
@@ -173,7 +173,7 @@ Each metric includes the following labels:
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "systemd",
@@ -189,7 +189,7 @@ Each metric includes the following labels:
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "dockerd",
@@ -221,7 +221,7 @@ Example configuration:
 ```json
 {
   "name": "process_monitor",
-  "timeout": 30000000000,
+  "timeout": 30,
   "enabled": true,
   "processes": [
     "nginx",

@@ -12,10 +12,11 @@ import (
 
 // Orchestrator coordinates the collection and shipping of metrics (Single Responsibility Principle)
 type Orchestrator struct {
-	registry *collector.Registry
-	shipper  shipper.Shipper
-	interval time.Duration
-	stopChan chan struct{}
+	registry         *collector.Registry
+	shipper          shipper.Shipper
+	interval         time.Duration
+	stopChan         chan struct{}
+	lastShipDuration time.Duration
 }
 
 // NewOrchestrator creates a new orchestrator
@@ -64,27 +65,72 @@ func (o *Orchestrator) collectAndShip(ctx context.Context) {
 
 	log.Debug().Msg("Starting metrics collection")
 
-	// Collect metrics from all collectors
-	metrics, err := o.registry.CollectAll(ctx)
+	// Collect metrics from all collectors in parallel
+	metrics, err := o.registry.CollectAllParallel(ctx)
 	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("Failed to collect metrics")
+		log.Error().Err(err).Msg("Failed to collect metrics")
 		return
+	}
+
+	collectDuration := time.Since(startTime)
+
+	// Deadline warning: if collection took >80% of interval, warn
+	threshold := time.Duration(float64(o.interval) * 0.8)
+	if collectDuration > threshold {
+		log.Warn().
+			Dur("collection_duration", collectDuration).
+			Dur("interval", o.interval).
+			Msg("Collection duration exceeds 80% of interval — consider increasing interval or reducing collectors")
 	}
 
 	log.Debug().
 		Int("metric_count", len(metrics)).
-		Dur("duration", time.Since(startTime)).
+		Dur("duration", collectDuration).
 		Msg("Metrics collected")
 
-	// Ship metrics to remote endpoint
-	if err := o.shipper.Ship(ctx, metrics); err != nil {
-		log.Error().
-			Err(err).
-			Msg("Failed to ship metrics")
-		return
+	// Append internal metrics about metricsd itself
+	internalMetrics := []collector.Metric{
+		{
+			Name:   "metricsd_collection_duration_seconds",
+			Value:  collectDuration.Seconds(),
+			Type:   "gauge",
+			Labels: map[string]string{},
+		},
 	}
+
+	// Include last ship duration from previous cycle (avoids chicken-and-egg)
+	if o.lastShipDuration > 0 {
+		internalMetrics = append(internalMetrics, collector.Metric{
+			Name:   "metricsd_ship_duration_seconds",
+			Value:  o.lastShipDuration.Seconds(),
+			Type:   "gauge",
+			Labels: map[string]string{},
+		})
+	}
+
+	metrics = append(metrics, internalMetrics...)
+
+	// Ship metrics with one retry on failure
+	shipStart := time.Now()
+	if err := o.shipper.Ship(ctx, metrics); err != nil {
+		log.Warn().Err(err).Msg("Ship failed, retrying in 1s")
+
+		// Context-aware backoff — don't block if shutting down
+		select {
+		case <-ctx.Done():
+			log.Warn().Msg("Ship retry cancelled — context done")
+			o.lastShipDuration = time.Since(shipStart)
+			return
+		case <-time.After(1 * time.Second):
+		}
+
+		if err := o.shipper.Ship(ctx, metrics); err != nil {
+			log.Error().Err(err).Msg("Ship retry failed")
+			o.lastShipDuration = time.Since(shipStart)
+			return
+		}
+	}
+	o.lastShipDuration = time.Since(shipStart)
 
 	log.Info().
 		Int("metric_count", len(metrics)).

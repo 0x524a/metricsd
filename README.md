@@ -116,6 +116,24 @@ docker run -d -p 8080:8080 -v $(pwd)/config.json:/etc/metricsd/config.json:ro me
   - Health endpoint for monitoring
   - Flexible shipper interface for custom backends
 
+- **Plugin System**
+  - Shell script plugins with JSON output
+  - Automatic plugin discovery from directory
+  - Per-plugin timeout and interval scheduling
+  - Circuit breaker for failing plugins
+  - Compile-time Go plugin extension point
+  - Security: path validation, sandboxed execution environment
+
+- **Splunk Integration**
+  - Splunk HEC (HTTP Event Collector) shipper
+  - JSON file shipper for Splunk Universal Forwarder
+  - Single-metric and multi-metric JSON formats
+
+- **Debian Packaging**
+  - `.deb` packages for amd64 and arm64
+  - systemd service with security hardening
+  - Automatic user/group creation
+
 - **Production-Ready**
   - Structured logging with zerolog
   - Graceful shutdown with cleanup
@@ -128,30 +146,18 @@ docker run -d -p 8080:8080 -v $(pwd)/config.json:/etc/metricsd/config.json:ro me
 The service follows SOLID principles with a clean architecture:
 
 ```
-metrics-collector/
-├── cmd/
-│   └── metrics-collector/     # Application entry point
-│       └── main.go
+metricsd/
+├── cmd/metricsd/           # Application entry point
 ├── internal/
-│   ├── collector/             # Metric collectors (System, GPU, HTTP)
-│   │   ├── collector.go       # Collector interface and registry
-│   │   ├── system.go          # OS metrics collector
-│   │   ├── gpu.go             # GPU metrics collector
-│   │   └── http.go            # HTTP endpoint scraper
-│   ├── config/                # Configuration management
-│   │   └── config.go
-│   ├── shipper/               # Metrics shipping
-│   │   ├── shipper.go         # Shipper interface
-│   │   ├── prometheus.go      # Prometheus remote write
-│   │   └── http_json.go       # HTTP JSON shipper
-│   ├── orchestrator/          # Collection orchestration
-│   │   └── orchestrator.go
-│   └── server/                # HTTP server for health checks
-│       └── server.go
-├── config.example.json        # Example configuration
-├── go.mod
-├── go.sum
-└── README.md
+│   ├── collector/          # Collector interface, registry, system/GPU/HTTP collectors
+│   ├── plugin/             # Plugin manager, exec plugin, discovery, security, Go registry
+│   ├── config/             # Configuration management
+│   ├── shipper/            # Prometheus, HTTP JSON, Splunk HEC, file shippers
+│   ├── orchestrator/       # Collection orchestration (parallel, retry)
+│   └── server/             # HTTP health endpoint
+├── plugins/                # Shell script plugins + sidecar configs
+├── packaging/debian/       # Debian package scripts + systemd service
+└── docs/                   # Plugin authoring guide, design specs
 ```
 
 ## Installation
@@ -197,7 +203,13 @@ cp config.example.json config.json
     "enable_memory": true,
     "enable_disk": true,
     "enable_network": true,
-    "enable_gpu": false
+    "enable_gpu": false,
+    "plugins": {
+      "enabled": false,
+      "plugins_dir": "./plugins",
+      "default_timeout_seconds": 30,
+      "validate_on_startup": true
+    }
   },
   "shipper": {
     "type": "http_json",
@@ -276,6 +288,38 @@ You can override configuration values using environment variables:
 | `MC_FILE_PATH` | File shipper output path | `/var/log/metricsd/metrics.json` |
 | `MC_FILE_MAX_SIZE_MB` | Maximum file size before rotation (MB) | `100` |
 | `MC_FILE_MAX_FILES` | Number of rotated files to keep | `5` |
+
+## Plugin System
+
+metricsd supports shell script plugins that output JSON metrics. Plugins are automatically discovered from the configured plugins directory.
+
+### Writing Plugins
+
+See [Plugin Authoring Guide](docs/plugin-authoring.md) for full documentation.
+
+Plugins are executable scripts that output a JSON array:
+
+```bash
+#!/bin/bash
+echo '[{"name": "my_metric", "value": 42.5, "type": "gauge", "labels": {"env": "prod"}}]'
+```
+
+### Configuration
+
+Each plugin can have a sidecar `.json` config file:
+
+```json
+{
+  "name": "my_plugin",
+  "timeout": 30,
+  "enabled": true,
+  "interval_seconds": 60
+}
+```
+
+### Go Plugin Extension
+
+For compile-time Go plugins, implement the `collector.Collector` interface and register via `plugin.RegisterGoPlugin()`. See the design spec for details.
 
 ## Usage
 
