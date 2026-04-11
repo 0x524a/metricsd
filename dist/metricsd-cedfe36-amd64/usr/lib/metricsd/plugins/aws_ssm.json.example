@@ -1,6 +1,0 @@
-{
-  "name": "aws_ssm",
-  "timeout": 30,
-  "interval_seconds": 3600,
-  "enabled": true
-}

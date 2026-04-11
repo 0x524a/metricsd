@@ -1,5 +1,0 @@
-{
-  "name": "nvidia_smi",
-  "timeout": 30,
-  "enabled": true
-}
