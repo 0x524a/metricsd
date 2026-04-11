@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -175,5 +176,167 @@ func TestStop(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Start did not return after Stop()")
+	}
+}
+
+// retryShipper is a shipper that fails for the first N calls then succeeds.
+type retryShipper struct {
+	mu        sync.Mutex
+	callCount int
+	failUntil int // fail for first N calls
+	shipped   [][]collector.Metric
+}
+
+func (r *retryShipper) Ship(_ context.Context, metrics []collector.Metric) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.callCount++
+	if r.callCount <= r.failUntil {
+		return fmt.Errorf("ship error on call %d", r.callCount)
+	}
+	r.shipped = append(r.shipped, metrics)
+	return nil
+}
+
+func (r *retryShipper) Close() error { return nil }
+
+func (r *retryShipper) calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.callCount
+}
+
+func (r *retryShipper) successCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.shipped)
+}
+
+// TestCollectAndShip_ShipRetry verifies the path where the first Ship call
+// fails but the retry succeeds — metrics must still be delivered.
+func TestCollectAndShip_ShipRetry(t *testing.T) {
+	userMetrics := []collector.Metric{
+		{Name: "cpu", Value: 1.0, Type: "gauge", Labels: map[string]string{}},
+	}
+	reg := collector.NewRegistry()
+	reg.Register(&mockCollector{name: "test", metrics: userMetrics})
+
+	shpr := &retryShipper{failUntil: 1} // fail first call, succeed on retry
+
+	o := NewOrchestrator(reg, shpr, 10*time.Minute)
+	o.collectAndShip(context.Background())
+
+	// Ship should have been called exactly twice (original + retry).
+	if shpr.calls() != 2 {
+		t.Errorf("expected 2 Ship calls (1 fail + 1 retry), got %d", shpr.calls())
+	}
+	// The retry succeeded, so metrics should have been delivered once.
+	if shpr.successCount() != 1 {
+		t.Errorf("expected 1 successful delivery, got %d", shpr.successCount())
+	}
+	// lastShipDuration should be set after a successful retry.
+	if o.lastShipDuration == 0 {
+		t.Error("expected lastShipDuration to be non-zero after successful retry")
+	}
+}
+
+// TestCollectAndShip_ShipRetryFails verifies the path where both the original
+// Ship call and the retry fail — no panic, lastShipDuration still set.
+func TestCollectAndShip_ShipRetryFails(t *testing.T) {
+	userMetrics := []collector.Metric{
+		{Name: "cpu", Value: 2.0, Type: "gauge", Labels: map[string]string{}},
+	}
+	reg := collector.NewRegistry()
+	reg.Register(&mockCollector{name: "test", metrics: userMetrics})
+
+	shpr := &retryShipper{failUntil: 999} // always fail
+
+	o := NewOrchestrator(reg, shpr, 10*time.Minute)
+	o.collectAndShip(context.Background())
+
+	// Ship should have been called exactly twice (original + retry).
+	if shpr.calls() != 2 {
+		t.Errorf("expected 2 Ship calls (original + retry), got %d", shpr.calls())
+	}
+	// No metrics should have been successfully delivered.
+	if shpr.successCount() != 0 {
+		t.Errorf("expected 0 successful deliveries, got %d", shpr.successCount())
+	}
+	// lastShipDuration is still updated even on full failure.
+	if o.lastShipDuration == 0 {
+		t.Error("expected lastShipDuration to be non-zero even after failed retry")
+	}
+}
+
+// TestCollectAndShip_DeadlineWarning verifies that collectAndShip completes
+// without panic when the collection duration exceeds 80 % of the interval.
+// We can't assert on the log output but we can ensure the cycle still ships.
+func TestCollectAndShip_DeadlineWarning(t *testing.T) {
+	// Use a very short interval so even a trivial collection duration exceeds 80 %.
+	interval := 1 * time.Nanosecond
+
+	reg := collector.NewRegistry()
+	reg.Register(&mockCollector{
+		name:    "slow",
+		metrics: []collector.Metric{{Name: "m", Value: 1, Type: "gauge", Labels: map[string]string{}}},
+	})
+
+	shpr := &mockShipper{}
+	o := NewOrchestrator(reg, shpr, interval)
+
+	// collectAndShip must not panic even when the deadline warning fires.
+	o.collectAndShip(context.Background())
+
+	if shpr.calls() < 1 {
+		t.Error("expected at least one Ship call despite deadline warning")
+	}
+}
+
+// TestCollectAndShip_LastShipDurationIncluded verifies that on the second call
+// to collectAndShip the metricsd_ship_duration_seconds internal metric is
+// present in the shipped batch (because lastShipDuration was set by the first).
+func TestCollectAndShip_LastShipDurationIncluded(t *testing.T) {
+	reg := collector.NewRegistry()
+	reg.Register(&mockCollector{
+		name:    "test",
+		metrics: []collector.Metric{{Name: "cpu", Value: 1.0, Type: "gauge", Labels: map[string]string{}}},
+	})
+
+	shpr := &mockShipper{}
+	o := NewOrchestrator(reg, shpr, 10*time.Minute)
+
+	// First cycle — sets lastShipDuration but does NOT include it in shipped metrics.
+	o.collectAndShip(context.Background())
+
+	if shpr.calls() != 1 {
+		t.Fatalf("expected 1 Ship call after first cycle, got %d", shpr.calls())
+	}
+	firstBatch := shpr.firstBatch()
+	for _, m := range firstBatch {
+		if m.Name == "metricsd_ship_duration_seconds" {
+			t.Error("metricsd_ship_duration_seconds should NOT appear in first cycle batch")
+		}
+	}
+
+	// Second cycle — lastShipDuration > 0, so ship metric must be included.
+	o.collectAndShip(context.Background())
+
+	if shpr.calls() != 2 {
+		t.Fatalf("expected 2 Ship calls after second cycle, got %d", shpr.calls())
+	}
+
+	shpr.mu.Lock()
+	secondBatch := shpr.shipped[1]
+	shpr.mu.Unlock()
+
+	found := false
+	for _, m := range secondBatch {
+		if m.Name == "metricsd_ship_duration_seconds" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected metricsd_ship_duration_seconds in second cycle batch")
 	}
 }

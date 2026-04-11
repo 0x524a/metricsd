@@ -213,3 +213,12 @@ func TestNewServer_NilProvider(t *testing.T) {
 		t.Error("expected nil collectors when provider is nil")
 	}
 }
+
+func TestServer_ShutdownWithoutStart(t *testing.T) {
+	srv := NewServer("localhost", 0, nil)
+	// Shutdown without Start — server field is nil
+	err := srv.Shutdown(context.Background())
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}

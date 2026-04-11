@@ -440,3 +440,30 @@ func TestFileShipper_DefaultFormat(t *testing.T) {
 		t.Errorf("Expected 2 lines for single format, got %d", lineCount)
 	}
 }
+
+func TestNewFileShipper_Defaults(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "metricsd-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "metrics.json")
+
+	// Pass 0/0/"" to trigger all default branches
+	shipper, err := NewFileShipper(filePath, 0, 0, "")
+	if err != nil {
+		t.Fatalf("Failed to create shipper: %v", err)
+	}
+	defer shipper.Close()
+
+	if shipper.maxSizeBytes != 100*1024*1024 {
+		t.Errorf("expected default maxSizeBytes 100MB, got %d", shipper.maxSizeBytes)
+	}
+	if shipper.maxFiles != 5 {
+		t.Errorf("expected default maxFiles 5, got %d", shipper.maxFiles)
+	}
+	if shipper.format != "single" {
+		t.Errorf("expected default format 'single', got %s", shipper.format)
+	}
+}
