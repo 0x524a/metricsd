@@ -171,14 +171,14 @@ metricsd/
 
 ```bash
 # Clone the repository
-git clone https://github.com/0x524a/metrics-collector.git
-cd metrics-collector
+git clone https://github.com/0x524A/metricsd.git
+cd metricsd
 
 # Download dependencies
 go mod download
 
 # Build the binary
-go build -o bin/metrics-collector cmd/metrics-collector/main.go
+go build -o bin/metricsd cmd/metricsd/main.go
 ```
 
 ## Configuration
@@ -327,13 +327,13 @@ For compile-time Go plugins, implement the `collector.Collector` interface and r
 
 ```bash
 # Run with default config.json
-./bin/metrics-collector
+./bin/metricsd
 
 # Run with custom config file
-./bin/metrics-collector -config /path/to/config.json
+./bin/metricsd -config /path/to/config.json
 
 # Set log level
-./bin/metrics-collector -log-level debug
+./bin/metricsd -log-level debug
 ```
 
 ### Log Levels
