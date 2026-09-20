@@ -25,17 +25,14 @@ const (
 )
 
 func main() {
-	// Parse command-line flags
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
 	logLevel := flag.String("log-level", "info", "Log level (debug, info, warn, error)")
 	flag.Parse()
 
-	// Setup logging
 	setupLogging(*logLevel)
 
 	log.Info().Msg("Starting Metrics Collector Service")
 
-	// Load configuration
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load configuration")
@@ -45,8 +42,16 @@ func main() {
 		Str("config_file", *configPath).
 		Msg("Configuration loaded successfully")
 
-	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	if err := run(context.Background(), cfg, sigChan); err != nil {
+		log.Fatal().Err(err).Msg("Service run failed")
+	}
+}
+
+func run(ctx context.Context, cfg *config.Config, sigChan <-chan os.Signal) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Initialize components
@@ -67,10 +72,6 @@ func main() {
 		healthProvider = &pluginHealthAdapter{mgr: pluginMgr}
 	}
 	httpServer := server.NewServer(cfg.Server.Host, cfg.Server.Port, healthProvider)
-
-	// Setup signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Start services
 	errChan := make(chan error, 2)
@@ -117,6 +118,8 @@ func main() {
 	}
 
 	log.Info().Msg("Metrics Collector Service stopped")
+
+	return nil
 }
 
 func setupLogging(level string) {

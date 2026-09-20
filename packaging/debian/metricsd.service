@@ -1,6 +1,6 @@
 [Unit]
 Description=metricsd metrics collector
-Documentation=https://github.com/yourusername/metricsd
+Documentation=https://github.com/0x524A/metricsd
 After=network-online.target
 Wants=network-online.target
 
