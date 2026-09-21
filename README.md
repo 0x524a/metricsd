@@ -1872,26 +1872,7 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## Contributing
 
-Contributions are welcome! Here's how you can help:
-
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Make your changes**
-4. **Add tests** for new functionality
-5. **Ensure tests pass** (`go test ./...`)
-6. **Format your code** (`gofmt -w .`)
-7. **Commit your changes** (`git commit -m 'Add amazing feature'`)
-8. **Push to the branch** (`git push origin feature/amazing-feature`)
-9. **Open a Pull Request**
-
-### Contribution Guidelines
-
-- Follow Go best practices and idioms
-- Maintain SOLID design principles
-- Add tests for new functionality
-- Update documentation as needed
-- Keep commits atomic and well-described
-- Ensure backward compatibility when possible
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on how to get started, development workflow, and our expectations for code quality and testing.
 
 ## Support
 

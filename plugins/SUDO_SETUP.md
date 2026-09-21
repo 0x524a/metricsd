@@ -66,13 +66,21 @@ sudo systemctl restart metricsd
 sudo visudo -f /etc/sudoers.d/metricsd
 ```
 
-Add:
+Add allowlist for read-only nerdctl subcommands (no wildcards):
 
 ```
-# Allow metricsd user to run nerdctl commands without password
-metricsd ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl *
-metricsd ALL=(ALL) NOPASSWD: /usr/bin/nerdctl *
+# Allow metricsd user to run read-only nerdctl commands without password
+metricsd ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl ps
+metricsd ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl ps -a
+metricsd ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl stats --no-stream
+metricsd ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl namespace ls
+metricsd ALL=(ALL) NOPASSWD: /usr/bin/nerdctl ps
+metricsd ALL=(ALL) NOPASSWD: /usr/bin/nerdctl ps -a
+metricsd ALL=(ALL) NOPASSWD: /usr/bin/nerdctl stats --no-stream
+metricsd ALL=(ALL) NOPASSWD: /usr/bin/nerdctl namespace ls
 ```
+
+**Security note:** If using namespace flags (e.g., `nerdctl -n k8s.io ps`), operators should add additional allowlist entries per environment. Avoid wildcards at the end of nerdctl commands, as they can escalate to unrestricted access.
 
 Then update the plugin configuration to use sudo:
 
@@ -90,6 +98,7 @@ Then update the plugin configuration to use sudo:
 ```bash
 #!/bin/bash
 # Wrapper to run nerdctl with sudo
+# Only approved subcommands are allowed by sudoers policy
 export PATH=/usr/local/bin:/usr/bin:$PATH
 NERDCTL_CMD=$(command -v nerdctl)
 exec sudo $NERDCTL_CMD "$@"
