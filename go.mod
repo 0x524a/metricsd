@@ -6,9 +6,9 @@ require (
 	github.com/NVIDIA/go-nvml v0.13.0-1
 	github.com/golang/snappy v1.0.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.70.1
-	github.com/prometheus/prometheus v0.310.0
+	github.com/prometheus/client_model v0.6.3
+	github.com/prometheus/common v0.71.0
+	github.com/prometheus/prometheus v0.315.0
 	github.com/rs/zerolog v1.35.1
 	github.com/shirou/gopsutil/v3 v3.24.5
 )
@@ -20,8 +20,8 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-colorable v0.1.15 // indirect
+	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
@@ -30,6 +30,6 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	golang.org/x/text v0.41.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 )
