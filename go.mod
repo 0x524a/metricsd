@@ -1,6 +1,6 @@
 module github.com/0x524A/metricsd
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/NVIDIA/go-nvml v0.13.0-1

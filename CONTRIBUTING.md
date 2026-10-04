@@ -14,7 +14,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ### Prerequisites
 
-- Go 1.25 or higher
+- Go 1.27 or higher
 - Make (for running build targets)
 - golangci-lint (for linting)
 - Docker (optional, for container builds)
