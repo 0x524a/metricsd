@@ -1,6 +1,6 @@
 # Metrics Collector Service (metricsd)
 
-[![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.27+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/0x524A/metricsd)](https://goreportcard.com/report/github.com/0x524A/metricsd)
 [![GitHub Release](https://img.shields.io/github/v/release/0x524A/metricsd)](https://github.com/0x524A/metricsd/releases)
@@ -164,7 +164,7 @@ metricsd/
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.27 or later
 - NVIDIA drivers and CUDA (optional, for GPU metrics)
 
 ### Build from Source
@@ -791,7 +791,7 @@ sudo journalctl -u metricsd -f
 Create a file named `Dockerfile` in the project root:
 
 ```dockerfile
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.27-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
