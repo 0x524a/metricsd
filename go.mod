@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/NVIDIA/go-nvml v0.13.4-0
 	github.com/golang/snappy v1.0.0
-	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.72.0
 	github.com/prometheus/prometheus v0.315.0
@@ -24,7 +24,7 @@ require (
 	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/prometheus/procfs v0.21.1 // indirect
+	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
